@@ -44,22 +44,6 @@ class HttpClient {
 
   void setup();
 
-public:
-  static HttpClient new_client(const std::string &url);
-
-  void print_headers();
-
-  HttpClient &del();
-  HttpClient &get();
-  HttpClient &post();
-  HttpClient &put();
-
-  HttpClient &add_headers(std::map<std::string, std::string> headers);
-
-  std::string get_method();
-
-  std::string get_formatted_request();
-
   std::pair<std::map<std::string, std::string>, int> get_resp_headers();
 
   std::string read_fixed_length_body(int length);
@@ -76,6 +60,21 @@ public:
 
   HttpReponse non_ssl_send();
 
+public:
+  static HttpClient new_client(const std::string &url);
+
+  void print_headers();
+
+  HttpClient &del();
+  HttpClient &get();
+  HttpClient &post();
+  HttpClient &put();
+
+  HttpClient &add_headers(std::map<std::string, std::string> headers);
+
+  std::string get_method();
+
+  std::string get_formatted_request();
   HttpReponse send();
 
   url::Url get_url();
