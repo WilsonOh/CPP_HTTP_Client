@@ -11,6 +11,11 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * Simple redirect handling (for 301/302)
 * Url parsing using the `url::Url` object
 
+## Helper Function in `get_ip.hpp`
+```cpp
+inline std::string get_ipaddr(const std::string &hostname); // returns the dot-and-numbers notation of a given hostname
+```
+
 ## Classes
 ### HttpClient
 HttpClient handles all the connections details, e.g. creating a socket and sockaddr struct and connecting to the host server
