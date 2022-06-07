@@ -11,9 +11,16 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * Simple redirect handling (for 301/302)
 * Url parsing using the `url::Url` object
 
-## Helper Function in `get_ip.hpp`
+## Helper Functions
+In `get_ip.hpp`
 ```cpp
 inline std::string get_ipaddr(const std::string &hostname); // returns the dot-and-numbers notation of a given hostname
+```
+In `strutil.hpp`<br>
+Namespaced under `strutil`
+```cpp
+inline std::vector<std::string> split(std::string s, std::string delimiter);
+inline std::string lowers(const std::string &s);
 ```
 
 ## Classes
