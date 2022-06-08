@@ -35,6 +35,13 @@ inline std::string lowers(const std::string &s) {
   return tmp;
 }
 
+inline std::string uppers(const std::string &s) {
+  std::string tmp = s;
+  std::transform(tmp.cbegin(), tmp.cend(), tmp.begin(),
+                 [](const char &c) { return toupper(c); });
+  return tmp;
+}
+
 inline std::string ltrim(const std::string &s) {
   std::string copy = s;
   copy.erase(copy.cbegin(),
