@@ -34,16 +34,16 @@ class HttpClient {
   url::Url _url;
   std::map<std::string, std::string> _headers;
   HttpMethod _method;
-  int _sockfd;
-  BIO *_bio;
-  SSL_CTX *_ctx;
+  int _sockfd = -1;
+  BIO *_bio = NULL;
+  SSL_CTX *_ctx = NULL;
   std::string _body;
 
   HttpClient(const url::Url &url);
 
   void ssl_setup();
 
-  void setup();
+  void non_ssl_setup();
 
   std::pair<std::map<std::string, std::string>, int> get_resp_headers();
 
@@ -63,6 +63,8 @@ class HttpClient {
 
 public:
   static HttpClient new_client(const std::string &url);
+
+  ~HttpClient();
 
   void print_headers();
 
