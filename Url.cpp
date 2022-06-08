@@ -42,7 +42,7 @@ static string get_scheme(string &url) {
   }
   string ret = url.substr(0, n);
   url.erase(0, n + 3);
-  return ret;
+  return strutil::lowers(ret);
 }
 
 static string get_authority(string &url) {
