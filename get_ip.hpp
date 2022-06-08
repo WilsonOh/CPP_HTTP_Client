@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <string>
 #include <iostream>
-#include <optional>
 
 /**
  * Return the ip address in dots and numbers notation of a host given its
