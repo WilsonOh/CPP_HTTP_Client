@@ -62,7 +62,7 @@ HttpClient &del();
 HttpClient &get();
 HttpClient &post();
 HttpClient &put();
-// sets the http method
+// sets the http method, defaults to GET if no methods are set
 
 HttpClient &add_headers(std::map<std::string, std::string> headers); // Adds http headers as a map
 HttpClient &add_header(std::string key, std::string value); // Add a single header as a key-value pair of strings
