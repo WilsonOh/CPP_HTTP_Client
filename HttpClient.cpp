@@ -1,6 +1,9 @@
 #include "HttpClient.hpp"
 #include "fmt/core.h"
+#include "get_ip.hpp"
 #include "strutil.hpp"
+#include <arpa/inet.h>
+#include <openssl/bio.h>
 
 HttpClient::HttpClient(const url::Url &url) : _url(url) {
   if (strutil::lowers(_url.scheme()) == "https") {
@@ -25,6 +28,22 @@ void HttpClient::ssl_setup() {
     throw std::runtime_error("Failed to do ssl connect");
   }
 }
+
+/*
+void HttpClient::ssl_setup() {
+  SSL_library_init();
+  if ((_ctx = SSL_CTX_new(SSLv23_client_method())) == NULL) {
+    throw std::runtime_error("Failed to create SSL context");
+  }
+  SSL_CTX_set_options(_ctx, SSL_OP_NO_SSLv2);
+  _bio = BIO_new_ssl_connect(_ctx);
+  BIO_set_conn_hostname(_bio, get_ipaddr(_url.domain()).c_str());
+  BIO_set_conn_port(_bio, "https");
+  if (BIO_do_connect(_bio) != 1) {
+    std::cout << ERR_error_string(ERR_get_error(), NULL) << '\n';
+    throw std::runtime_error("Failed to do ssl connect");
+  }
+} */
 
 void HttpClient::setup() {
   _sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -134,7 +153,7 @@ HttpClient::get_resp_headers() {
     std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
     if (tmp.empty()) continue;
     if (!tmp[0].empty() && !tmp[1].empty())
-      ret.insert({tmp[0], tmp[1]});
+      ret.insert({strutil::lowers(tmp[0]), strutil::lowers(tmp[1])});
   }
   return {ret, statuscode};
 }
@@ -223,7 +242,7 @@ HttpClient::ssl_get_resp_headers() {
     std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
     if (tmp.empty()) continue;
     if (!tmp[0].empty() && !tmp[1].empty())
-      ret.insert({tmp[0], tmp[1]});
+      ret.insert({strutil::lowers(tmp[0]), strutil::lowers(tmp[1])});
   }
   return {ret, statuscode};
 }
@@ -235,10 +254,10 @@ HttpReponse HttpClient::ssl_send() {
   }
   auto [resp_headers, statuscode] = ssl_get_resp_headers();
   std::string body;
-  if (resp_headers.find("Content-Length") != resp_headers.end()) {
+  if (resp_headers.find("content-length") != resp_headers.end()) {
     body = ssl_read_fixed_length_body(
-        std::stoi(resp_headers.at("Content-Length")));
-  } else if (resp_headers.find("Transfer-Encoding") != resp_headers.end()) {
+        std::stoi(resp_headers.at("content-length")));
+  } else if (resp_headers.find("transfer-encoding") != resp_headers.end()) {
     body = ssl_read_chunked_body();
   } else {
     throw std::runtime_error("host server response header has no "
@@ -260,9 +279,9 @@ HttpReponse HttpClient::non_ssl_send() {
   }
   auto [resp_headers, statuscode] = get_resp_headers();
   std::string body;
-  if (resp_headers.find("Content-Length") != resp_headers.end()) {
-    body = read_fixed_length_body(std::stoi(resp_headers.at("Content-Length")));
-  } else if (resp_headers.find("Transfer-Encoding") != resp_headers.end()) {
+  if (resp_headers.find("content-length") != resp_headers.end()) {
+    body = read_fixed_length_body(std::stoi(resp_headers.at("content-length")));
+  } else if (resp_headers.find("transfer-encoding") != resp_headers.end()) {
     body = read_chunked_body();
   } else {
     throw std::runtime_error("host server response header has no "
