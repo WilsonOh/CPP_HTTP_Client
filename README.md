@@ -6,6 +6,7 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 ## Dependencies
 * [fmt library](https://fmt.dev/latest/index.html)
 * openssl development library
+* C++17
 
 ## Features
 * GET/POST/PUT/DELETE requests for http connections and *some* https connections depending on the website
