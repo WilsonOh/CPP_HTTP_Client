@@ -1,15 +1,24 @@
 #include "HttpClient.hpp"
+#include "Url.hpp"
 #include "fmt/core.h"
 #include "get_ip.hpp"
 #include "strutil.hpp"
 #include <arpa/inet.h>
 #include <openssl/bio.h>
+#include <unistd.h>
 
-HttpClient::HttpClient(const url::Url &url) : _url(url) {
-  if (strutil::lowers(_url.scheme()) == "https") {
-    ssl_setup();
+/*----------Constructor, Destructor and Setup Functions----------*/
+HttpClient::HttpClient(const url::Url &url) : _url(url) {}
+
+HttpClient::~HttpClient() {
+  if (_url.scheme() == "https") {
+    if (_bio != NULL)
+      BIO_free_all(_bio);
+    if (_ctx != NULL)
+      SSL_CTX_free(_ctx);
   } else {
-    setup();
+    if (_sockfd != -1)
+      close(_sockfd);
   }
 }
 
@@ -29,23 +38,7 @@ void HttpClient::ssl_setup() {
   }
 }
 
-/*
-void HttpClient::ssl_setup() {
-  SSL_library_init();
-  if ((_ctx = SSL_CTX_new(SSLv23_client_method())) == NULL) {
-    throw std::runtime_error("Failed to create SSL context");
-  }
-  SSL_CTX_set_options(_ctx, SSL_OP_NO_SSLv2);
-  _bio = BIO_new_ssl_connect(_ctx);
-  BIO_set_conn_hostname(_bio, get_ipaddr(_url.domain()).c_str());
-  BIO_set_conn_port(_bio, "https");
-  if (BIO_do_connect(_bio) != 1) {
-    std::cout << ERR_error_string(ERR_get_error(), NULL) << '\n';
-    throw std::runtime_error("Failed to do ssl connect");
-  }
-} */
-
-void HttpClient::setup() {
+void HttpClient::non_ssl_setup() {
   _sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (_sockfd == -1) {
     throw std::runtime_error("failed to create socket");
@@ -66,6 +59,7 @@ HttpClient HttpClient::new_client(const std::string &url) {
   return HttpClient(url::parse(url));
 }
 
+/*------------Getter and Setter Methods------------*/
 void HttpClient::print_headers() {
   for (const auto &[k, v] : _headers) {
     std::cout << k << " : " << v << '\n';
@@ -120,6 +114,8 @@ std::string HttpClient::get_method() {
   }
 }
 
+url::Url HttpClient::get_url() { return _url; }
+
 std::string HttpClient::get_formatted_request() {
   std::string req = fmt::format("{} {} HTTP/1.1\r\n", get_method(), _url.uri());
   for (const auto &[k, v] : _headers) {
@@ -134,6 +130,7 @@ std::string HttpClient::get_formatted_request() {
   return req;
 }
 
+/*---------------------"Engine" Methods-----------------*/
 std::pair<std::map<std::string, std::string>, int>
 HttpClient::get_resp_headers() {
   std::string resp;
@@ -151,7 +148,33 @@ HttpClient::get_resp_headers() {
   std::map<std::string, std::string> ret;
   for (; it != resp_headers.cend(); ++it) {
     std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
-    if (tmp.empty()) continue;
+    if (tmp.empty())
+      continue;
+    if (!tmp[0].empty() && !tmp[1].empty())
+      ret.insert({strutil::lowers(tmp[0]), strutil::lowers(tmp[1])});
+  }
+  return {ret, statuscode};
+}
+
+std::pair<std::map<std::string, std::string>, int>
+HttpClient::ssl_get_resp_headers() {
+  std::string resp;
+  char buf[2] = {0};
+  while (BIO_read(_bio, buf, 1) > 0) {
+    resp.append(buf);
+    if (resp.find("\r\n\r\n") != std::string::npos) {
+      break;
+    }
+  }
+  std::vector<std::string> resp_headers = strutil::split(resp, "\n");
+  auto it = resp_headers.cbegin();
+  int statuscode = std::stoi(strutil::split(*it, " ")[1]);
+  it++;
+  std::map<std::string, std::string> ret;
+  for (; it != resp_headers.cend(); ++it) {
+    std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
+    if (tmp.empty())
+      continue;
     if (!tmp[0].empty() && !tmp[1].empty())
       ret.insert({strutil::lowers(tmp[0]), strutil::lowers(tmp[1])});
   }
@@ -223,31 +246,8 @@ std::string HttpClient::ssl_read_chunked_body() {
   return body;
 }
 
-std::pair<std::map<std::string, std::string>, int>
-HttpClient::ssl_get_resp_headers() {
-  std::string resp;
-  char buf[2] = {0};
-  while (BIO_read(_bio, buf, 1) > 0) {
-    resp.append(buf);
-    if (resp.find("\r\n\r\n") != std::string::npos) {
-      break;
-    }
-  }
-  std::vector<std::string> resp_headers = strutil::split(resp, "\n");
-  auto it = resp_headers.cbegin();
-  int statuscode = std::stoi(strutil::split(*it, " ")[1]);
-  it++;
-  std::map<std::string, std::string> ret;
-  for (; it != resp_headers.cend(); ++it) {
-    std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
-    if (tmp.empty()) continue;
-    if (!tmp[0].empty() && !tmp[1].empty())
-      ret.insert({strutil::lowers(tmp[0]), strutil::lowers(tmp[1])});
-  }
-  return {ret, statuscode};
-}
-
 HttpReponse HttpClient::ssl_send() {
+  ssl_setup();
   std::string req = get_formatted_request();
   if (BIO_write(_bio, req.c_str(), req.length()) <= 0) {
     throw std::runtime_error("failed to write");
@@ -263,16 +263,14 @@ HttpReponse HttpClient::ssl_send() {
     throw std::runtime_error("host server response header has no "
                              "content-length or chunked encoding");
   }
-  if (statuscode == 301 || statuscode == 302) {
-    HttpClient copy = *this;
-    copy.ssl_setup();
-    copy._url = url::parse(resp_headers.at("Location"));
-    return copy.ssl_send();
+  if (statuscode >= 300 && statuscode < 400) {
+    return new_client(resp_headers.at("location")).send();
   }
   return {resp_headers, statuscode, body};
 }
 
 HttpReponse HttpClient::non_ssl_send() {
+  non_ssl_setup();
   std::string req = get_formatted_request();
   if (write(_sockfd, req.c_str(), req.length()) == -1) {
     throw std::runtime_error("failed to write (non-ssl)");
@@ -287,24 +285,18 @@ HttpReponse HttpClient::non_ssl_send() {
     throw std::runtime_error("host server response header has no "
                              "content-length or chunked encoding");
   }
-  if (statuscode == 301 || statuscode == 302) {
-    _url = url::parse(resp_headers.at("Location"));
-    return send();
+  if (statuscode >= 300 && statuscode < 400) {
+    return new_client(resp_headers.at("location")).send();
   }
   return {resp_headers, statuscode, body};
 }
 
 HttpReponse HttpClient::send() {
   HttpReponse ret;
-  if (strutil::lowers(_url.scheme()) == "https") {
+  if (_url.scheme() == "https") {
     ret = ssl_send();
-    BIO_free_all(_bio);
-    SSL_CTX_free(_ctx);
   } else {
     ret = non_ssl_send();
-    close(_sockfd);
   }
   return ret;
 }
-
-url::Url HttpClient::get_url() { return _url; }
