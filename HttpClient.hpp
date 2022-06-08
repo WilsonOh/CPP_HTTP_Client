@@ -37,6 +37,7 @@ class HttpClient {
   int _sockfd;
   BIO *_bio;
   SSL_CTX *_ctx;
+  std::string _body;
 
   HttpClient(const url::Url &url);
 
@@ -71,6 +72,9 @@ public:
   HttpClient &put();
 
   HttpClient &add_headers(std::map<std::string, std::string> headers);
+  HttpClient &add_header(std::string key, std::string value);
+
+  HttpClient &body(std::string s);
 
   std::string get_method();
 

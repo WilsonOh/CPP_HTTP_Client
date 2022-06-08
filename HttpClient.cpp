@@ -1,4 +1,6 @@
 #include "HttpClient.hpp"
+#include "fmt/core.h"
+#include "strutil.hpp"
 
 HttpClient::HttpClient(const url::Url &url) : _url(url) {
   if (strutil::lowers(_url.scheme()) == "https") {
@@ -74,6 +76,16 @@ HttpClient::add_headers(std::map<std::string, std::string> headers) {
   return *this;
 }
 
+HttpClient &HttpClient::add_header(std::string key, std::string value) {
+  _headers.insert_or_assign(key, value);
+  return *this;
+}
+
+HttpClient &HttpClient::body(std::string s) {
+  _body = s;
+  return *this;
+}
+
 std::string HttpClient::get_method() {
   switch (_method) {
   case GET:
@@ -95,7 +107,11 @@ std::string HttpClient::get_formatted_request() {
     req.append(fmt::format("{}: {}\r\n", k, v));
   }
   req.append(fmt::format("Host: {}\r\n", _url.domain()));
+  if (!_body.empty()) {
+    req.append(fmt::format("{}: {}", "Content-Length", _body.length()));
+  }
   req.append("\r\n\r\n");
+  req.append(_body);
   return req;
 }
 
@@ -115,7 +131,8 @@ HttpClient::get_resp_headers() {
   it++;
   std::map<std::string, std::string> ret;
   for (; it != resp_headers.cend(); ++it) {
-    std::vector<std::string> tmp = strutil::split(*it, ": ");
+    std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
+    if (tmp.empty()) continue;
     if (!tmp[0].empty() && !tmp[1].empty())
       ret.insert({tmp[0], tmp[1]});
   }
@@ -154,6 +171,9 @@ std::string HttpClient::read_chunked_body() {
 }
 
 std::string HttpClient::ssl_read_fixed_length_body(int length) {
+  if (length == 0) {
+    return "";
+  }
   int total = 0;
   char buf[2] = {0};
   std::string body;
@@ -200,7 +220,8 @@ HttpClient::ssl_get_resp_headers() {
   it++;
   std::map<std::string, std::string> ret;
   for (; it != resp_headers.cend(); ++it) {
-    std::vector<std::string> tmp = strutil::split(*it, ": ");
+    std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
+    if (tmp.empty()) continue;
     if (!tmp[0].empty() && !tmp[1].empty())
       ret.insert({tmp[0], tmp[1]});
   }
@@ -215,10 +236,8 @@ HttpReponse HttpClient::ssl_send() {
   auto [resp_headers, statuscode] = ssl_get_resp_headers();
   std::string body;
   if (resp_headers.find("Content-Length") != resp_headers.end()) {
-    if (std::stoi(resp_headers.at("Content-Length")) != 0) {
-      body = ssl_read_fixed_length_body(
-          std::stoi(resp_headers.at("Content-Length")));
-    }
+    body = ssl_read_fixed_length_body(
+        std::stoi(resp_headers.at("Content-Length")));
   } else if (resp_headers.find("Transfer-Encoding") != resp_headers.end()) {
     body = ssl_read_chunked_body();
   } else {
@@ -226,8 +245,10 @@ HttpReponse HttpClient::ssl_send() {
                              "content-length or chunked encoding");
   }
   if (statuscode == 301 || statuscode == 302) {
-    _url = url::parse(resp_headers.at("Location"));
-    return ssl_send();
+    HttpClient copy = *this;
+    copy.ssl_setup();
+    copy._url = url::parse(resp_headers.at("Location"));
+    return copy.ssl_send();
   }
   return {resp_headers, statuscode, body};
 }
