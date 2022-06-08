@@ -87,6 +87,7 @@ int main(void) {
   
   
   */
+  HttpResponse res = client.send();
   if (res.statuscode != 200) {
     ...
   }
