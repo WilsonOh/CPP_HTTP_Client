@@ -14,8 +14,8 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * Add request headers and request body easily
 
 ## HELP
-The https requests works for sites like [google](https://google.com), [youtube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [pokemon api](https://pokeapi.co/)<br>.
-I don't really know what the issue is as I'm not too familiar with tls programming so any help would be appreciated!
+The https requests works for sites like [google](https://google.com), [youtube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [pokemon api](https://pokeapi.co/).<br>
+I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!
 
 ## Helper Functions
 In `get_ip.hpp`
