@@ -1,5 +1,5 @@
 # HTTP Client Written in C++
-This is a side project for me to gain a deeper understanding of how HTTP connections work and also to learn more about C++. There's probably some bugs that are not fixed and the SSL connections work for some websites only 😢 (Please help!)
+This is a side project for me to gain a deeper understanding of how HTTP connections work and to also learn more about C++. There's probably some bugs that are not fixed, and the SSL connections work for some websites only 😢 (Please help!)
 
 # This library only works on Linux and macOS!
 
@@ -15,7 +15,7 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * Add request headers and request body easily
 
 ## HELP
-The https requests works for sites like [google](https://google.com), [youtube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [pokemon api](https://pokeapi.co/).<br>
+The https requests works for sites like [Google](https://google.com), [YouTube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [Pokémon api](https://pokeapi.co/).<br>
 I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!
 
 ## Helper Functions
@@ -54,7 +54,7 @@ class HttpClient {
 }
 ```
 #### Methods
-The methods are written in a way which supports chaining
+The methods are written in a way, which supports chaining
  ```cpp
 static HttpClient new_client(const std::string &url); // Constructor method which takes in a url string,
                                                        // parses it internally and returns a HttpClient object
