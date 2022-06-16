@@ -17,9 +17,9 @@
  */
 inline std::string get_ipaddr(const std::string &hostname) {
   struct addrinfo hints = {0};
-  hints.ai_family = AF_INET;
+  hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_protocol = 0;
+  hints.ai_protocol = IPPROTO_TCP;
   struct addrinfo *res;
   int err_code;
   if ((err_code = getaddrinfo(hostname.c_str(), NULL, &hints, &res)) != 0) {

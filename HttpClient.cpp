@@ -5,6 +5,11 @@
 #include "strutil.hpp"
 #include <arpa/inet.h>
 #include <openssl/bio.h>
+#include <openssl/cryptoerr.h>
+#include <openssl/evp.h>
+#include <openssl/ssl.h>
+#include <openssl/sslerr.h>
+#include <openssl/tls1.h>
 #include <unistd.h>
 
 /*----------Constructor, Destructor and Setup Functions----------*/
@@ -22,16 +27,39 @@ HttpClient::~HttpClient() {
   }
 }
 
-void HttpClient::ssl_setup() {
+/**
+ * Additional setup that can be called:
   SSL_library_init();
-  if ((_ctx = SSL_CTX_new(SSLv23_client_method())) == NULL) {
+  ERR_load_CRYPTO_strings();
+  ERR_load_SSL_strings();
+  SSL_load_error_strings();
+  OpenSSL_add_all_algorithms();
+
+  SSL_CTX_set_verify_depth(_ctx, 4);
+  SSL_CTX_set_options(_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1
+  SSL_OP_NO_COMPRESSION); SSL_CTX_set_cipher_list(_ctx, "ALL");
+  SSL_CTX_load_verify_locations(_ctx, NULL, "/etc/ssl/certs");
+
+  SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+ */
+void HttpClient::ssl_setup() {
+  if ((_ctx = SSL_CTX_new(TLS_method())) == NULL) {
     throw std::runtime_error("Failed to create SSL context");
   }
-  SSL_CTX_set_options(_ctx, SSL_OP_NO_SSLv2);
-  _bio = BIO_new_ssl_connect(_ctx);
-  std::string tmp =
+  if ((_bio = BIO_new_ssl_connect(_ctx)) == NULL) {
+    throw std::runtime_error("Failed to create BIO");
+  }
+  SSL *ssl(nullptr);
+  BIO_get_ssl(_bio, &ssl);
+  if (ssl == NULL) {
+    throw std::runtime_error("Failed to get SSL object");
+  }
+  std::string domain_with_port =
       fmt::format("{}:{}", _url.domain(), std::to_string(_url.port()));
-  BIO_set_conn_hostname(_bio, tmp.c_str());
+  // VERY IMPT ↓!! It sets the SNI for the host server which is mandatory for some
+  // TLS connections with some servers
+  SSL_set_tlsext_host_name(ssl, _url.domain().c_str());
+  BIO_set_conn_hostname(_bio, domain_with_port.c_str());
   if (BIO_do_connect(_bio) != 1) {
     std::cout << ERR_error_string(ERR_get_error(), NULL) << '\n';
     throw std::runtime_error("Failed to do ssl connect");
@@ -266,7 +294,8 @@ HttpReponse HttpClient::ssl_send() {
   if (statuscode >= 300 && statuscode < 400) {
     std::string new_location = resp_headers.at("location");
     if (new_location[0] == '/') {
-      new_location = fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
+      new_location =
+          fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
     }
     return new_client(new_location).send();
   }
@@ -292,7 +321,8 @@ HttpReponse HttpClient::non_ssl_send() {
   if (statuscode >= 300 && statuscode < 400) {
     std::string new_location = resp_headers.at("location");
     if (new_location[0] == '/') {
-      new_location = fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
+      new_location =
+          fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
     }
     return new_client(new_location).send();
   }
