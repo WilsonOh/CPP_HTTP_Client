@@ -264,7 +264,11 @@ HttpReponse HttpClient::ssl_send() {
                              "content-length or chunked encoding");
   }
   if (statuscode >= 300 && statuscode < 400) {
-    return new_client(resp_headers.at("location")).send();
+    std::string new_location = resp_headers.at("location");
+    if (new_location[0] == '/') {
+      new_location = fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
+    }
+    return new_client(new_location).send();
   }
   return {resp_headers, statuscode, body};
 }
@@ -286,7 +290,11 @@ HttpReponse HttpClient::non_ssl_send() {
                              "content-length or chunked encoding");
   }
   if (statuscode >= 300 && statuscode < 400) {
-    return new_client(resp_headers.at("location")).send();
+    std::string new_location = resp_headers.at("location");
+    if (new_location[0] == '/') {
+      new_location = fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
+    }
+    return new_client(new_location).send();
   }
   return {resp_headers, statuscode, body};
 }
