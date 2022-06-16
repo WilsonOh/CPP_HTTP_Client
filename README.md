@@ -1,5 +1,5 @@
 # HTTP Client Written in C++
-This is a side project for me to gain a deeper understanding of how HTTP connections work and to also learn more about C++. There's probably some bugs that are not fixed, and the SSL connections work for some websites only 😢 (Please help!)
+This is a side project for me to gain a deeper understanding of how HTTP connections work and to also learn more about C++.
 
 # This library only works on Linux and macOS!
 
@@ -15,8 +15,9 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * Add request headers and request body easily
 
 ## HELP
-The https requests works for sites like [Google](https://google.com), [YouTube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [Pokémon api](https://pokeapi.co/).<br>
-I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!
+~~The https requests works for sites like [Google](https://google.com), [YouTube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [Pokémon api](https://pokeapi.co/).<br>
+I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!~~
+Thanks to some helpful people over at [StackOverflow](https://stackoverflow.com), I managed to find and fix the problem! Apparently some servers require a Server Name Indication(SNI) in the TLS handshake so I just had to add it in with ` SSL_set_tlsext_host_name(ssl, _url.domain().c_str());` and now all https requests work 🙂 (hopefully).
 
 ## Helper Functions
 In `get_ip.hpp`
@@ -119,6 +120,17 @@ int main(void) {
   
   
   */
+  auto res = HttpClient::new_client("https://jsonplaceholder.typicode.com/todos/1").send();
+  std::cout << res.body;
+  /*
+  {
+	  "userId": 1,
+	  "id": 1,
+	  "title": "delectus aut autem",
+	  "completed": false
+  }
+  */
+
   HttpResponse res = client.send();
   if (res.statuscode != 200) {
     ...
