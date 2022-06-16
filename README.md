@@ -124,10 +124,10 @@ int main(void) {
   std::cout << res.body;
   /*
   {
-	  "userId": 1,
-	  "id": 1,
-	  "title": "delectus aut autem",
-	  "completed": false
+      "userId": 1,
+      "id": 1,
+      "title": "delectus aut autem",
+      "completed": false
   }
   */
 
@@ -190,6 +190,6 @@ make main
 
 ## TODO
 - [x] Learn how to properly set up SSL conections using openssl so that the https requests work properly
-- [x] ~Add support for adding a body for the request~ (using [this json library](https://github.com/nlohmann/json) maybe?)
-* use a json library to make sending json request bodies easier
+- [x] Add support for adding a body for the request (using [this json library](https://github.com/nlohmann/json) maybe?)
+- [ ] use a json library to make sending json request bodies easier
 
