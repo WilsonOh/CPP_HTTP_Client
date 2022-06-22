@@ -9,9 +9,9 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * C++17
 
 ## Features
-* GET/POST/PUT/DELETE requests for http connections and *some* https connections depending on the website
+* GET/POST/PUT/DELETE requests for HTTP and HTTPS connections
 * Simple redirect handling (for 3XX codes)
-* Url parsing using the `url::Url` object
+* Url parsing using the `url::Url` class
 * Add request headers and request body easily
 
 ## HELP
