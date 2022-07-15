@@ -1,12 +1,13 @@
 # HTTP Client Written in C++
 This is a side project for me to gain a deeper understanding of how HTTP connections work and to also learn more about C++.
 
-# This library only works on Linux and macOS!
+> **Note** This library only works on Linux and macOS!
 
 ## Dependencies
-* [fmt library](https://fmt.dev/latest/index.html)
-* openssl development library
-* C++17
+* [`fmt` library](https://fmt.dev/latest/index.html)
+* `openssl` development library
+* `C++17`
+* `cmake` 3.23.2 (for integrating this library into your project)
 
 ## Features
 * GET/POST/PUT/DELETE requests for HTTP and HTTPS connections
@@ -19,12 +20,20 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!~~<br>
 Thanks to some helpful people over at [StackOverflow](https://stackoverflow.com/questions/49474347/why-would-bio-do-connect-from-openssl-not-work-right-with-gdax-a-k-a-cloudfl), I managed to find and fix the problem! Apparently some servers require a Server Name Indication(SNI) in the TLS handshake so I just had to add it in with ` SSL_set_tlsext_host_name(ssl, _url.domain().c_str());` and now all https requests work 🙂 (hopefully).
 
-## Helper Functions
-In `get_ip.hpp`
+## Library Overview
+
+### Helper Functions
+<details>
+<summary>get_ip.hpp</summary>
+
 ```cpp
 inline std::string get_ipaddr(const std::string &hostname); // returns the dot-and-numbers notation of a given hostname
 ```
-In `strutil.hpp`<br>
+</details>
+
+<details>
+<summary>strutil.hpp</summary>
+
 Namespaced under `strutil`
 ```cpp
 inline std::vector<std::string> split(std::string s, std::string delimiter);
@@ -34,9 +43,14 @@ inline std::string ltrim(const std::string &s); // removes leading whitespace fr
 inline std::string rtrim(const std::string &s); // removes trailing whitespace from a string
 inline std::string trim(const std::string &s); // removes leading and trailing whitespace from a string
 ```
+</details>
 
-## Classes
-### HttpClient
+### Classes
+
+<details>
+
+<summary>HttpClient</summary>
+
 HttpClient handles all the connections details, e.g. creating a socket and sockaddr struct and connecting to the host server.<br>
 
 The HttpClient class is defined as the following:
@@ -74,10 +88,17 @@ std::string get_method();
 std::string get_formatted_request(); // returns the full raw http request
 url::Url get_url();
 
+
 HttpReponse send(); // Termination method;
                     // sends the fully configured request and returns a HttpResponse struct
 ```
-### Url
+
+</details>
+
+<details>
+
+<summary>Url</summary>
+
 Namespaced under `url`
 ```cpp
 Url parse(const std::string &url); // Takes in a url string and returns a Url object
@@ -89,7 +110,11 @@ std::string params();
 std::string fragment();
 std::string uri();
 ```
-### HttpResponse
+</details>
+
+<details>
+<summary>HttpResponse</summary>
+
 The HttpResponse struct is defined as the following:
 ```cpp
 struct HttpReponse {
@@ -98,14 +123,42 @@ struct HttpReponse {
   std::string body;
 };
 ```
+</details>
 
-### Example Usage
-#### GET Requests
+## Installation
+### CMake Integration
+This project should be used through its CMake integration.<br>
+Simply add the following lines to your project `CMakeLists.txt` file:
+```cmake
+include(FetchContent)
+
+cmake_minimum_required(VERSION 3.23.2)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED true)
+
+project(<Your Project Name> CXX)
+
+FetchContent_Declare(
+  HttpClient
+  GIT_REPOSITORY https://github.com/WilsonOh/CPP_HTTP_Client.git
+  GIT_TAG main
+)
+
+FetchContent_MakeAvailable(HttpClient)
+
+add_executable(${PROJECT_NAME} <Your Source Files>...)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE HttpClient)
+```
+
+## Example Usage
+### GET Requests
 ```cpp
 // main.cpp
 
 #include <iostream>
-#include "HttpClient.hpp"
+#include <HttpClient.hpp>
 
 int main(void) {
   HttpClient client = HttpClient::new_client("https://google.com")
@@ -141,12 +194,12 @@ int main(void) {
   std::cout << res.body;
 }
 ```
-#### POST Requests
+### POST Requests
 ```cpp
 // main.cpp
 
-#include "HttpClient.hpp"
 #include <iostream>
+#include <HttpClient.hpp>
 
 int main(void) {
   auto res = HttpClient::new_client("https://httpbin.org/post")
@@ -177,15 +230,6 @@ int main(void) {
   }
   */
 }
-
-```
-#### To Compile
-```console
-g++ main.cpp Url.cpp HttpClient.cpp -lfmt -lssl -lcrypto -std=c++17 -o main
-or
-g++ @compile_flags.txt -o main main.cpp
-or
-make main
 ```
 
 ## TODO
