@@ -33,4 +33,4 @@ target_link_libraries(${PROJECT_NAME} -lfmt -lssl -lcrypto)
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wpedantic)
 
-target_include_directories(${PROJECT_NAME} PUBLIC ./include ./src)
+target_include_directories(${PROJECT_NAME} PUBLIC include src)
