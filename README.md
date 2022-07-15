@@ -9,7 +9,7 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 * `C++17`
 * `cmake` 3.23.2 (for integrating this library into your project)
 
-## Features
+## Features :sparkles:
 * GET/POST/PUT/DELETE requests for HTTP and HTTPS connections
 * Simple redirect handling (for 3XX codes)
 * Url parsing using the `url::Url` class
@@ -134,7 +134,7 @@ include(FetchContent)
 
 cmake_minimum_required(VERSION 3.23.2)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
 project(<Your Project Name> CXX)
