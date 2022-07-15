@@ -13,19 +13,9 @@ function(add_headers VAR)
   set(${VAR} ${headers})
 endfunction()
 
-function(add_sources VAR)
-  set(headers ${${VAR}})
-  foreach (header ${ARGN})
-    set(headers ${headers} src/${header})
-  endforeach()
-  set(${VAR} ${headers})
-endfunction()
-
 add_headers(HEADERS HttpClient.hpp strutil.hpp Url.hpp)
 
-add_sources(SOURCES HttpClient.cpp Url.cpp)
-
-add_library(${PROJECT_NAME} ${HEADERS} ${SOURCES} README.md)
+add_library(${PROJECT_NAME} ${HEADERS} src/HttpClient.cpp src/Url.cpp README.md)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 
