@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fcntl.h> // open
 #include <fmt/core.h>
+#include <fstream>
 #include <map>
 #include <netinet/in.h> // sockaddr types, htons
 #include <signal.h>
@@ -38,6 +39,8 @@ class HttpClient {
   BIO *_bio = NULL;
   SSL_CTX *_ctx = NULL;
   std::string _body;
+  std::string _download_file;
+  std::ofstream _of;
 
   HttpClient(const url::Url &url);
 
@@ -72,6 +75,7 @@ public:
   HttpClient &get();
   HttpClient &post();
   HttpClient &put();
+  HttpClient &download_to_file(const std::string &file_name);
 
   HttpClient &add_headers(std::map<std::string, std::string> headers);
   HttpClient &add_header(std::string key, std::string value);

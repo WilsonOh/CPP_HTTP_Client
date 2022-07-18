@@ -4,6 +4,7 @@
 #include "get_ip.hpp"
 #include "strutil.hpp"
 #include <arpa/inet.h>
+#include <fstream>
 #include <openssl/bio.h>
 #include <openssl/cryptoerr.h>
 #include <openssl/evp.h>
@@ -243,12 +244,21 @@ HttpClient::ssl_get_resp_headers() {
  * the `Content-Length` header
  */
 std::string HttpClient::read_fixed_length_body(int length) {
+  if (length == 0) {
+    return "";
+  }
   int total = 0;
-  char buf[2] = {0};
+  unsigned char buf[2] = {0};
   std::string body;
   while (total < length) {
     total += read(_sockfd, buf, 1);
-    body.append(buf);
+    if (!_download_file.empty()) {
+      _of.write((char *)buf, 1);
+    }
+    body.append((char *)buf);
+    std::cout << fmt::format("\r{} out of {} bytes read, {:.2f}% done", total,
+                             length, ((float)total / length) * 100);
+    std::cout.flush();
   }
   return body;
 }
@@ -305,11 +315,17 @@ std::string HttpClient::ssl_read_fixed_length_body(int length) {
     return "";
   }
   int total = 0;
-  char buf[2] = {0};
+  unsigned char buf[2] = {0};
   std::string body;
   while (total < length) {
     total += BIO_read(_bio, buf, 1);
-    body.append(buf);
+    if (!_download_file.empty()) {
+      _of.write((char *)buf, 1);
+    }
+    body.append((char *)buf);
+    std::cout << fmt::format("\r{} out of {} bytes read, {:.2f}% done", total,
+                             length, ((float)total / length) * 100);
+    std::cout.flush();
   }
   return body;
 }
@@ -361,7 +377,7 @@ HttpReponse HttpClient::ssl_send() {
       new_location =
           fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
     }
-    return new_client(new_location).send();
+    return new_client(new_location).download_to_file(_download_file).send();
   }
   return {resp_headers, statuscode, body};
 }
@@ -403,12 +419,15 @@ HttpReponse HttpClient::non_ssl_send() {
     /* Create a new client and send a request to the new location.
      * This can recursively redirect until we get an valid status code
      */
-    return new_client(new_location).send();
+    return new_client(new_location).download_to_file(_download_file).send();
   }
   return {resp_headers, statuscode, body};
 }
 
 HttpReponse HttpClient::send() {
+  if (!_download_file.empty()) {
+    std::cout << "Downloading file into: " << _download_file << '\n';
+  }
   HttpReponse ret;
   if (verbose) {
     fmt::print("[LOG] Sending Request String:\n {}\n", get_formatted_request());
@@ -419,5 +438,17 @@ HttpReponse HttpClient::send() {
   } else {
     ret = non_ssl_send();
   }
+  if (!_download_file.empty()) {
+    _of.close();
+  }
   return ret;
+}
+
+HttpClient &HttpClient::download_to_file(const std::string &file_name) {
+  _download_file = file_name;
+  if (_of.is_open()) {
+    _of.close();
+  }
+  _of.open(file_name, std::ios::binary);
+  return *this;
 }

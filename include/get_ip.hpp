@@ -1,11 +1,11 @@
 #ifndef GET_IP_HPP
 #define GET_IP_HPP
 
-#include <netdb.h>
 #include <arpa/inet.h>
+#include <iostream>
+#include <netdb.h>
 #include <stdexcept>
 #include <string>
-#include <iostream>
 
 /**
  * Return the ip address in dots and numbers notation of a host given its
@@ -16,7 +16,7 @@
  * or a nullopt if the hostname is invalid
  */
 inline std::string get_ipaddr(const std::string &hostname) {
-  struct addrinfo hints = {0};
+  struct addrinfo hints;
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
