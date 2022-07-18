@@ -4,6 +4,7 @@
 #include "get_ip.hpp"
 #include "strutil.hpp"
 #include <arpa/inet.h>
+#include <filesystem>
 #include <fstream>
 #include <openssl/bio.h>
 #include <openssl/cryptoerr.h>
@@ -440,6 +441,7 @@ HttpReponse HttpClient::send() {
   }
   if (!_download_file.empty()) {
     _of.close();
+    std::filesystem::rename(_download_file + ".tmp", _download_file);
   }
   return ret;
 }
@@ -449,6 +451,6 @@ HttpClient &HttpClient::download_to_file(const std::string &file_name) {
   if (_of.is_open()) {
     _of.close();
   }
-  _of.open(file_name, std::ios::binary);
+  _of.open(file_name + ".tmp", std::ios::binary);
   return *this;
 }
