@@ -4,7 +4,6 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 > **Note** This library only works on Linux and macOS!
 
 ## Dependencies
-* [`fmt` library](https://fmt.dev/latest/index.html)
 * `openssl` development library
 * `C++17`
 * `cmake` 3.23.2 (for integrating this library into your project)
