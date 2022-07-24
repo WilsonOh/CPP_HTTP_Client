@@ -1,17 +1,18 @@
 #include "HttpClient.hpp"
 #include "Url.hpp"
-#include "fmt/core.h"
 #include "get_ip.hpp"
 #include "strutil.hpp"
 #include <arpa/inet.h>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <openssl/bio.h>
 #include <openssl/cryptoerr.h>
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
 #include <openssl/sslerr.h>
 #include <openssl/tls1.h>
+#include <sstream>
 #include <unistd.h>
 
 #ifdef VERBOSE
@@ -62,8 +63,9 @@ void HttpClient::ssl_setup() {
   if (ssl == NULL) {
     throw std::runtime_error("Failed to get SSL object");
   }
-  std::string domain_with_port =
-      fmt::format("{}:{}", _url.domain(), std::to_string(_url.port()));
+  std::stringstream ss;
+  ss << _url.domain() << ':' << _url.port();
+  std::string domain_with_port = ss.str();
   // VERY IMPT ↓!! It sets the SNI for the host server which is mandatory for
   // some TLS connections with some servers
   SSL_set_tlsext_host_name(ssl, _url.domain().c_str());
@@ -153,13 +155,21 @@ std::string HttpClient::get_method() {
 url::Url HttpClient::get_url() { return _url; }
 
 std::string HttpClient::get_formatted_request() {
-  std::string req = fmt::format("{} {} HTTP/1.1\r\n", get_method(), _url.uri());
+  std::stringstream req_ss;
+  req_ss << get_method() << ' ' << _url.uri() << ' ' << "HTTP/1.1\r\n";
+  std::string req = req_ss.str();
   for (const auto &[k, v] : _headers) {
-    req.append(fmt::format("{}: {}\r\n", k, v));
+    std::stringstream header_ss;
+    header_ss << k << ": " << v << "\r\n";
+    req.append(header_ss.str());
   }
-  req.append(fmt::format("Host: {}\r\n", _url.domain()));
+  std::stringstream host_ss;
+  host_ss << "Host: " << _url.domain() << "\r\n";
+  req.append(host_ss.str());
   if (!_body.empty()) {
-    req.append(fmt::format("{}: {}", "Content-Length", _body.length()));
+    std::stringstream content_len_ss;
+    content_len_ss << "Content-Length: " << _body.length();
+    req.append(content_len_ss.str());
   }
   req.append("\r\n\r\n");
   req.append(_body);
@@ -257,10 +267,12 @@ std::string HttpClient::read_fixed_length_body(int length) {
       _of.write((char *)buf, 1);
     }
     body.append((char *)buf);
-    std::cout << fmt::format("\r{} out of {} bytes read, {:.2f}% done", total,
-                             length, ((float)total / length) * 100);
+    std::cout << '\r' << total << " out of " << length << " bytes read, "
+              << std::fixed << std::setprecision(2)
+              << (((float)total / length) * 100) << '%';
     std::cout.flush();
   }
+  std::cout << '\n';
   return body;
 }
 
@@ -324,10 +336,12 @@ std::string HttpClient::ssl_read_fixed_length_body(int length) {
       _of.write((char *)buf, 1);
     }
     body.append((char *)buf);
-    std::cout << fmt::format("\r{} out of {} bytes read, {:.2f}% done", total,
-                             length, ((float)total / length) * 100);
+    std::cout << '\r' << total << " out of " << length << " bytes read, "
+              << std::fixed << std::setprecision(2)
+              << (((float)total / length) * 100) << '%';
     std::cout.flush();
   }
+  std::cout << '\n';
   return body;
 }
 
@@ -375,8 +389,10 @@ HttpReponse HttpClient::ssl_send() {
   if (statuscode >= 300 && statuscode < 400) {
     std::string new_location = resp_headers.at("location");
     if (new_location[0] == '/') {
-      new_location =
-          fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
+      std::stringstream new_location_ss;
+      new_location_ss << _url.scheme() << "://" << _url.domain()
+                      << new_location;
+      new_location = new_location_ss.str();
     }
     return new_client(new_location).download_to_file(_download_file).send();
   }
@@ -414,8 +430,10 @@ HttpReponse HttpClient::non_ssl_send() {
     /* If the server redirects to a relative path, construct the full path from
      * the relative path */
     if (new_location[0] == '/') {
-      new_location =
-          fmt::format("{}://{}{}", _url.scheme(), _url.domain(), new_location);
+      std::stringstream new_location_ss;
+      new_location_ss << _url.scheme() << "://" << _url.domain()
+                      << new_location;
+      new_location = new_location_ss.str();
     }
     /* Create a new client and send a request to the new location.
      * This can recursively redirect until we get an valid status code
@@ -431,7 +449,8 @@ HttpReponse HttpClient::send() {
   }
   HttpReponse ret;
   if (verbose) {
-    fmt::print("[LOG] Sending Request String:\n {}\n", get_formatted_request());
+    std::cout << "[LOG] Sending Request String: \n " << get_formatted_request()
+              << '\n';
   }
   /* Choose between ssl and non-ssl methods depending on the scheme */
   if (_url.scheme() == "https") {

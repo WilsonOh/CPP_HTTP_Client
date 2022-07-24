@@ -7,7 +7,6 @@
 #include <arpa/inet.h> // inet_pton
 #include <cstring>
 #include <fcntl.h> // open
-#include <fmt/core.h>
 #include <fstream>
 #include <map>
 #include <netinet/in.h> // sockaddr types, htons

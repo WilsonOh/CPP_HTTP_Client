@@ -1,7 +1,6 @@
 #include "Url.hpp"
 #include "strutil.hpp"
 #include <cstdint>
-#include <fmt/core.h>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -28,10 +27,10 @@ string url::Url::uri() {
 }
 
 std::ostream &url::operator<<(std::ostream &out, const url::Url &url) {
-  out << fmt::format("Url[\n  scheme: {}\n  domain: {}\n  port: {}\n  path: "
-                     "{}\n  params: {}\n  fragment: {}\n]",
-                     url._scheme, url._domain, url._port, url._path,
-                     url._parameters, url._fragment);
+  out << "Url[\n  scheme: " << url._scheme << "\n domain: " << url._domain
+      << "\n port: " << url._port << "\n path: " << url._path
+      << "\n params: " << url._parameters << "\n fragment: " << url._fragment
+      << "\n]";
   return out;
 }
 
