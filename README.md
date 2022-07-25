@@ -19,6 +19,34 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!~~<br>
 Thanks to some helpful people over at [StackOverflow](https://stackoverflow.com/questions/49474347/why-would-bio-do-connect-from-openssl-not-work-right-with-gdax-a-k-a-cloudfl), I managed to find and fix the problem! Apparently some servers require a Server Name Indication(SNI) in the TLS handshake so I just had to add it in with ` SSL_set_tlsext_host_name(ssl, _url.domain().c_str());` and now all https requests work 🙂 (hopefully).
 
+## Installation
+### CMake Integration
+This project should be used through its CMake integration.<br>
+Simply add the following lines to your project `CMakeLists.txt` file:
+```cmake
+include(FetchContent)
+
+cmake_minimum_required(VERSION 3.23.2)
+
+project(<Your Project Name> CXX)
+
+set(ENABLE_LOGGING <ON/OFF>) # Set the ENABLE_LOGGING option on or off
+
+FetchContent_Declare(
+  HttpClient
+  GIT_REPOSITORY https://github.com/WilsonOh/CPP_HTTP_Client.git
+  GIT_TAG main
+)
+
+FetchContent_MakeAvailable(HttpClient)
+
+add_executable(${PROJECT_NAME} <Your Source Files>...)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE HttpClient)
+```
+You can also specify whether to turn on logging or not when running cmake:
+`cmake -S . - B build -DENABLE_LOGGING=ON`
+
 ## Library Overview
 
 ### Helper Functions
@@ -123,33 +151,6 @@ struct HttpReponse {
 };
 ```
 </details>
-
-## Installation
-### CMake Integration
-This project should be used through its CMake integration.<br>
-Simply add the following lines to your project `CMakeLists.txt` file:
-```cmake
-include(FetchContent)
-
-cmake_minimum_required(VERSION 3.23.2)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED true)
-
-project(<Your Project Name> CXX)
-
-FetchContent_Declare(
-  HttpClient
-  GIT_REPOSITORY https://github.com/WilsonOh/CPP_HTTP_Client.git
-  GIT_TAG main
-)
-
-FetchContent_MakeAvailable(HttpClient)
-
-add_executable(${PROJECT_NAME} <Your Source Files>...)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE HttpClient)
-```
 
 ## Example Usage
 ### GET Requests

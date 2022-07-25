@@ -1,8 +1,11 @@
 #include "HttpClient.hpp"
 #include "Url.hpp"
 #include "get_ip.hpp"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/sinks/stdout_sinks.h"
 #include "strutil.hpp"
 #include <arpa/inet.h>
+#include <bits/chrono.h>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -12,13 +15,14 @@
 #include <openssl/ssl.h>
 #include <openssl/sslerr.h>
 #include <openssl/tls1.h>
+#include <spdlog/async.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/stopwatch.h>
 #include <sstream>
 #include <unistd.h>
 
-#ifdef VERBOSE
-static bool verbose = true;
-#else
-static bool verbose = false;
+#ifdef ENABLE_LOGGING
+auto logger = spdlog::stdout_color_mt<spdlog::async_factory>("logger");
 #endif
 
 /*----------Constructor, Destructor and Setup Functions----------*/
@@ -195,6 +199,9 @@ HttpClient::get_resp_headers() {
       break;
     }
   }
+#ifdef ENABLE_LOGGING
+  logger->info("Recieved Response Headers:\n{}", resp);
+#endif
   std::vector<std::string> resp_headers = strutil::split(resp, "\n");
   /* Get the iterator pointing to the first line */
   auto it = resp_headers.cbegin();
@@ -235,6 +242,9 @@ HttpClient::ssl_get_resp_headers() {
       break;
     }
   }
+#ifdef ENABLE_LOGGING
+  logger->info("Recieved Response Headers:\n{}", resp);
+#endif
   std::vector<std::string> resp_headers = strutil::split(resp, "\n");
   auto it = resp_headers.cbegin();
   int statuscode = std::stoi(strutil::split(*it, " ")[1]);
@@ -261,16 +271,21 @@ std::string HttpClient::read_fixed_length_body(int length) {
   int total = 0;
   unsigned char buf[2] = {0};
   std::string body;
+#ifdef ENABLE_LOGGING
+  spdlog::stopwatch sw;
+#endif
   while (total < length) {
     total += read(_sockfd, buf, 1);
     if (!_download_file.empty()) {
       _of.write((char *)buf, 1);
     }
     body.append((char *)buf);
-    std::cout << '\r' << total << " out of " << length << " bytes read, "
-              << std::fixed << std::setprecision(2)
-              << (((float)total / length) * 100) << '%';
-    std::cout.flush();
+#ifdef ENABLE_LOGGING
+    logger->info(
+        "{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r", total, length,
+        (((float)total / length) * 100),
+        std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed()).count());
+#endif
   }
   std::cout << '\n';
   return body;
@@ -330,16 +345,21 @@ std::string HttpClient::ssl_read_fixed_length_body(int length) {
   int total = 0;
   unsigned char buf[2] = {0};
   std::string body;
+#ifdef ENABLE_LOGGING
+  spdlog::stopwatch sw;
+#endif
   while (total < length) {
     total += BIO_read(_bio, buf, 1);
     if (!_download_file.empty()) {
       _of.write((char *)buf, 1);
     }
     body.append((char *)buf);
-    std::cout << '\r' << total << " out of " << length << " bytes read, "
-              << std::fixed << std::setprecision(2)
-              << (((float)total / length) * 100) << '%';
-    std::cout.flush();
+#ifdef ENABLE_LOGGING
+    logger->info(
+        "{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r", total, length,
+        (((float)total / length) * 100),
+        std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed()).count());
+#endif
   }
   std::cout << '\n';
   return body;
@@ -444,14 +464,14 @@ HttpReponse HttpClient::non_ssl_send() {
 }
 
 HttpReponse HttpClient::send() {
+#ifdef ENABLE_LOGGING
+  spdlog::set_pattern("[%D %r] %^[%l]%$ %v");
   if (!_download_file.empty()) {
-    std::cout << "Downloading file into: " << _download_file << '\n';
+    logger->info("Downloading file into: {}\n", _download_file);
   }
+  logger->info("Sending Request String:\n{}", get_formatted_request());
+#endif
   HttpReponse ret;
-  if (verbose) {
-    std::cout << "[LOG] Sending Request String: \n " << get_formatted_request()
-              << '\n';
-  }
   /* Choose between ssl and non-ssl methods depending on the scheme */
   if (_url.scheme() == "https") {
     ret = ssl_send();
