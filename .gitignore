@@ -1,5 +1,5 @@
 build/
 *.dSYM/
 main*
-.cache/
+.cache*
 compile_commands.json
