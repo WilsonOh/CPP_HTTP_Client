@@ -5,7 +5,6 @@
 #include "spdlog/sinks/stdout_sinks.h"
 #include "strutil.hpp"
 #include <arpa/inet.h>
-#include <bits/chrono.h>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
