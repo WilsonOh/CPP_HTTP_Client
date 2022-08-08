@@ -1,27 +1,28 @@
 #include "HttpClient.hpp"
 #include "Url.hpp"
 #include "get_ip.hpp"
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include "spdlog/sinks/stdout_sinks.h"
 #include "strutil.hpp"
 #include <arpa/inet.h>
+#include <bits/chrono.h>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <openssl/bio.h>
 #include <openssl/cryptoerr.h>
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
 #include <openssl/sslerr.h>
 #include <openssl/tls1.h>
-#include <spdlog/async.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
 #include <sstream>
 #include <unistd.h>
 
 #ifdef ENABLE_LOGGING
-auto logger = spdlog::stdout_color_mt<spdlog::async_factory>("logger");
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/stopwatch.h>
+
+auto logger = spdlog::stdout_color_mt("logger");
 #endif
 
 /*----------Constructor, Destructor and Setup Functions----------*/
@@ -272,6 +273,7 @@ std::string HttpClient::read_fixed_length_body(int length) {
   std::string body;
 #ifdef ENABLE_LOGGING
   spdlog::stopwatch sw;
+  spdlog::stopwatch curr;
 #endif
   while (total < length) {
     total += read(_sockfd, buf, 1);
@@ -280,10 +282,15 @@ std::string HttpClient::read_fixed_length_body(int length) {
     }
     body.append((char *)buf);
 #ifdef ENABLE_LOGGING
-    logger->info(
-        "{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r", total, length,
-        (((float)total / length) * 100),
-        std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed()).count());
+    if (std::chrono::duration_cast<std::chrono::seconds>(curr.elapsed())
+            .count() > 1) {
+      logger->info(
+          "{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r", total, length,
+          (((float)total / length) * 100),
+          std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed())
+              .count());
+      curr.reset();
+    }
 #endif
   }
   std::cout << '\n';
@@ -346,6 +353,7 @@ std::string HttpClient::ssl_read_fixed_length_body(int length) {
   std::string body;
 #ifdef ENABLE_LOGGING
   spdlog::stopwatch sw;
+  spdlog::stopwatch curr;
 #endif
   while (total < length) {
     total += BIO_read(_bio, buf, 1);
@@ -354,10 +362,15 @@ std::string HttpClient::ssl_read_fixed_length_body(int length) {
     }
     body.append((char *)buf);
 #ifdef ENABLE_LOGGING
-    logger->info(
-        "{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r", total, length,
-        (((float)total / length) * 100),
-        std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed()).count());
+    if (std::chrono::duration_cast<std::chrono::seconds>(curr.elapsed())
+            .count() > 1) {
+      logger->info(
+          "{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r", total, length,
+          (((float)total / length) * 100),
+          std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed())
+              .count());
+      curr.reset();
+    }
 #endif
   }
   std::cout << '\n';

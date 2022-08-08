@@ -4,7 +4,10 @@ project(HttpClient)
 
 option(ENABLE_LOGGING "Enable Logging" OFF)
 
-add_subdirectory(spdlog)
+if(ENABLE_LOGGING)
+  add_subdirectory(spdlog)
+  list(APPEND EXTRA_LIBS spdlog::spdlog)
+endif()
 
 function(add_headers VAR)
   set(headers ${${VAR}})
@@ -24,7 +27,7 @@ add_headers(HEADERS HttpClient.hpp strutil.hpp Url.hpp)
 add_library(${PROJECT_NAME} ${HEADERS} src/HttpClient.cpp src/Url.cpp README.md)
 
 target_link_libraries(${PROJECT_NAME} OpenSSL::SSL OpenSSL::Crypto
-                      spdlog::spdlog)
+                      ${EXTRA_LIBS})
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wpedantic)
 
