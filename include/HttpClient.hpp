@@ -2,7 +2,6 @@
 #define HTTPCLIENT_HPP
 
 #include "Url.hpp"
-#include "get_ip.hpp"
 #include "strutil.hpp"
 #include <arpa/inet.h> // inet_pton
 #include <cstring>
@@ -18,8 +17,6 @@
 #include <unistd.h>
 #include <vector>
 
-#include <openssl/bio.h>
-#include <openssl/err.h>
 #include <openssl/ssl.h>
 
 struct HttpReponse {
@@ -30,24 +27,19 @@ struct HttpReponse {
 
 enum HttpMethod { GET, POST, DELETE, PUT };
 
+using HttpHeaders = std::map<std::string, std::string>;
+
 class HttpClient {
-  url::Url _url;
-  std::map<std::string, std::string> _headers;
-  HttpMethod _method;
   int _sockfd = -1;
-  BIO *_bio = NULL;
+  SSL *_ssl = NULL;
   SSL_CTX *_ctx = NULL;
-  std::string _body;
-  std::string _download_file;
-  std::ofstream _of;
+  url::Url _base_url;
 
-  HttpClient(const url::Url &url);
-
-  void ssl_setup();
+  void ssl_setup(const url::Url &url);
 
   void non_ssl_setup();
 
-  std::pair<std::map<std::string, std::string>, int> get_resp_headers();
+  std::pair<HttpHeaders, int> parse_response_header();
 
   std::string read_fixed_length_body(int length);
 
@@ -59,34 +51,42 @@ class HttpClient {
 
   std::pair<std::map<std::string, std::string>, int> ssl_get_resp_headers();
 
+  int handle_read(char *buf, std::size_t size);
+
+  int handle_write(const char *buf, std::size_t size);
+
+  void drain(std::size_t size);
+
+  HttpReponse send_http_request(const std::string &url, HttpMethod method,
+                                HttpHeaders headers, const std::string &body);
+
   HttpReponse ssl_send();
 
   HttpReponse non_ssl_send();
 
+  std::string get_formatted_request(const std::string &uri, HttpMethod method,
+                                    HttpHeaders &headers,
+                                    const std::string &body) const;
+  std::string get_method(HttpMethod method) const;
+
 public:
-  static HttpClient new_client(const std::string &url);
+  HttpClient(const std::string &url);
 
   ~HttpClient();
 
-  void print_headers();
+  HttpReponse get(const std::string &uri);
+  HttpReponse get(const std::string &uri, const HttpHeaders &headers);
 
-  HttpClient &del();
-  HttpClient &get();
-  HttpClient &post();
-  HttpClient &put();
-  HttpClient &download_to_file(const std::string &file_name);
+  HttpReponse post(const std::string &uri, const std::string &body);
+  HttpReponse post(const std::string &uri, const std::string &body,
+                   const HttpHeaders &headers);
 
-  HttpClient &add_headers(std::map<std::string, std::string> headers);
-  HttpClient &add_header(std::string key, std::string value);
+  HttpReponse put(const std::string &uri, const std::string &body);
+  HttpReponse put(const std::string &uri, const std::string &body,
+                  const HttpHeaders &headers);
 
-  HttpClient &body(std::string s);
-
-  std::string get_method();
-
-  std::string get_formatted_request();
-  HttpReponse send();
-
-  url::Url get_url();
+  HttpReponse del(const std::string &uri);
+  HttpReponse del(const std::string &uri, const HttpHeaders &headers);
 };
 
 #endif // !HTTPCLIENT_HPP

@@ -21,12 +21,12 @@ class Url {
 
 public:
   Url() = default;
-  std::string scheme();
-  std::string domain();
-  uint16_t port();
-  std::string params();
-  std::string fragment();
-  std::string uri();
+  std::string scheme() const;
+  std::string domain() const;
+  uint16_t port() const;
+  std::string params() const;
+  std::string fragment() const;
+  std::string uri() const;
 };
 
 std::ostream &operator<<(std::ostream &out, const url::Url &url);
