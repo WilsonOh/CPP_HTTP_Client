@@ -1,133 +1,125 @@
 #include "HttpClient.hpp"
 #include "Url.hpp"
-#include "get_ip.hpp"
+#include "spdlog/fmt/bundled/core.h"
 #include "strutil.hpp"
 #include <arpa/inet.h>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <ios>
 #include <iostream>
-#include <openssl/bio.h>
-#include <openssl/cryptoerr.h>
-#include <openssl/evp.h>
-#include <openssl/ssl.h>
-#include <openssl/sslerr.h>
-#include <openssl/tls1.h>
+#include <netdb.h>
 #include <sstream>
+#include <stdexcept>
+#include <string>
 #include <unistd.h>
+#include <vector>
 
-#ifdef ENABLE_LOGGING
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-
-auto logger = spdlog::stdout_color_mt("logger");
-#endif
-
-/*----------Constructor, Destructor and Setup Functions----------*/
-HttpClient::HttpClient(const url::Url &url) : _url(url) {}
-
-HttpClient::~HttpClient() {
-  if (_url.scheme() == "https") {
-    if (_bio != NULL) { BIO_free_all(_bio); }
-    if (_ctx != NULL) { SSL_CTX_free(_ctx); }
-  } else {
-    if (_sockfd != -1) close(_sockfd);
+std::string get_ip_from_addrinfo(struct addrinfo *ai) {
+  std::string buf;
+  if (ai->ai_addr->sa_family == AF_INET) {
+    struct sockaddr_in *addr_in = (struct sockaddr_in *)ai->ai_addr;
+    buf.resize(INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &(addr_in->sin_addr), buf.data(), INET_ADDRSTRLEN);
+  } else if (ai->ai_addr->sa_family == AF_INET6) {
+    struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)ai->ai_addr;
+    buf.resize(INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET6, &(addr_in6->sin6_addr), buf.data(), INET6_ADDRSTRLEN);
   }
+  return buf;
 }
 
 /**
- * Additional setup that can be called:
-  SSL_library_init();
-  ERR_load_CRYPTO_strings();
-  ERR_load_SSL_strings();
-  SSL_load_error_strings();
-  OpenSSL_add_all_algorithms();
-
-  SSL_CTX_set_verify_depth(_ctx, 4);
-  SSL_CTX_set_options(_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1
-  SSL_OP_NO_COMPRESSION); SSL_CTX_set_cipher_list(_ctx, "ALL");
-  SSL_CTX_load_verify_locations(_ctx, NULL, "/etc/ssl/certs");
-
-  SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+ * @brief finds the first valid ip address for {domain} and {port}
+ *
+ * @param domain the domain to connect to
+ * @param port the port to connect to
+ * @return the file descriptor of the socket if there's a valid address, or -1
+ * if there are no valid addresses
  */
-void HttpClient::ssl_setup() {
-  if ((_ctx = SSL_CTX_new(TLS_method())) == NULL) { throw std::runtime_error("Failed to create SSL context"); }
-  if ((_bio = BIO_new_ssl_connect(_ctx)) == NULL) { throw std::runtime_error("Failed to create BIO"); }
-  SSL *ssl(nullptr);
-  BIO_get_ssl(_bio, &ssl);
-  if (ssl == NULL) { throw std::runtime_error("Failed to get SSL object"); }
-  std::stringstream ss;
-  ss << _url.domain() << ':' << _url.port();
-  std::string domain_with_port = ss.str();
-  // VERY IMPT ↓!! It sets the SNI for the host server which is mandatory for
-  // some TLS connections with some servers
-  SSL_set_tlsext_host_name(ssl, _url.domain().c_str());
-  BIO_set_conn_hostname(_bio, domain_with_port.c_str());
-  if (BIO_do_connect(_bio) != 1) {
-    std::cout << ERR_error_string(ERR_get_error(), NULL) << '\n';
-    throw std::runtime_error("Failed to do ssl connect");
+int connect_to_host(url::Url &url) {
+  struct addrinfo hints = {0};
+  struct addrinfo *res;
+  int addrinfo_err;
+  int sockfd;
+
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  if ((addrinfo_err =
+           getaddrinfo(url.domain().c_str(), std::to_string(url.port()).c_str(),
+                       &hints, &res)) != 0) {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(addrinfo_err));
+    return -1;
+  }
+  for (; res != NULL; res = res->ai_next) {
+    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sockfd == -1) {
+      continue;
+    }
+    std::string ip = get_ip_from_addrinfo(res);
+    if (connect(sockfd, res->ai_addr, res->ai_addrlen) != 0) {
+      continue;
+    }
+    break;
+  }
+  if (res == NULL) {
+    return -1;
+  }
+  freeaddrinfo(res);
+  return sockfd;
+}
+
+// Let the buffer size for reading from sockets one page
+#define BUF_SIZE 4096
+
+/*----------Constructor, Destructor and Setup Functions----------*/
+
+HttpClient::HttpClient(const std::string &url) {
+  url::Url parsed_url = url::parse(url);
+  _base_url = parsed_url;
+  _sockfd = connect_to_host(parsed_url);
+
+  if (_sockfd == -1) {
+    throw std::runtime_error("Error connecting to server.");
+  }
+
+  if (parsed_url.scheme() == "https") {
+    ssl_setup(parsed_url);
   }
 }
 
-void HttpClient::non_ssl_setup() {
-  _sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (_sockfd == -1) { throw std::runtime_error("failed to create socket"); }
-  struct sockaddr_in sa = { 0 };
-  sa.sin_family = AF_INET;
-  sa.sin_port = htons(_url.port());
-  std::string ip = get_ipaddr(_url.domain());
-  if (inet_pton(AF_INET, ip.c_str(), &sa.sin_addr) == -1) { throw std::runtime_error("inet_pton: error"); }
-  if (connect(_sockfd, (struct sockaddr *)&sa, sizeof(struct sockaddr)) == -1) {
-    throw std::runtime_error("failed to connect to ip: " + ip);
+HttpClient::~HttpClient() {
+  if (_ssl != NULL) {
+    SSL_shutdown(_ssl);
+    SSL_free(_ssl);
+  }
+  if (_ctx != NULL) {
+    SSL_CTX_free(_ctx);
+  }
+  if (_sockfd > 0) {
+    close(_sockfd);
   }
 }
 
-HttpClient HttpClient::new_client(const std::string &url) { return HttpClient(url::parse(url)); }
+void HttpClient::ssl_setup(const url::Url &url) {
+  _ctx = SSL_CTX_new(TLS_method());
+  if (_ctx == NULL) {
+    throw std::runtime_error("Failed to create SSL context");
+  }
+  _ssl = SSL_new(_ctx);
+  if (_ssl == NULL) {
+    throw std::runtime_error("Failed to get SSL object");
+  }
+  // set SNI for servers with multiple virtual hosts
+  SSL_set_tlsext_host_name(_ssl, url.domain().c_str());
+  SSL_set_fd(_ssl, _sockfd);
+  SSL_connect(_ssl);
+}
 
 /*------------Getter and Setter Methods------------*/
-void HttpClient::print_headers() {
-  for (const auto &[k, v] : _headers) { std::cout << k << " : " << v << '\n'; }
-}
 
-HttpClient &HttpClient::del() {
-  _method = HttpMethod::DELETE;
-  return *this;
-}
-
-HttpClient &HttpClient::get() {
-  _method = HttpMethod::GET;
-  return *this;
-}
-
-HttpClient &HttpClient::post() {
-  _method = HttpMethod::POST;
-  return *this;
-}
-
-HttpClient &HttpClient::put() {
-  _method = HttpMethod::PUT;
-  return *this;
-}
-
-HttpClient &HttpClient::add_headers(std::map<std::string, std::string> headers) {
-  _headers.merge(headers);
-  return *this;
-}
-
-HttpClient &HttpClient::add_header(std::string key, std::string value) {
-  _headers.insert_or_assign(key, value);
-  return *this;
-}
-
-HttpClient &HttpClient::body(std::string s) {
-  _body = s;
-  return *this;
-}
-
-std::string HttpClient::get_method() {
-  switch (_method) {
+std::string HttpClient::get_method(HttpMethod method) const {
+  switch (method) {
   case GET:
     return "GET";
   case POST:
@@ -141,28 +133,27 @@ std::string HttpClient::get_method() {
   }
 }
 
-url::Url HttpClient::get_url() { return _url; }
+std::string HttpClient::get_formatted_request(const std::string &uri,
+                                              HttpMethod method,
+                                              HttpHeaders &user_headers,
+                                              const std::string &body) const {
+  HttpHeaders headers = {{"Host", _base_url.domain()}};
 
-std::string HttpClient::get_formatted_request() {
+  if (!body.empty()) {
+    headers.insert_or_assign("Content-Length", std::to_string(body.length()));
+  }
+
+  headers.merge(user_headers);
+
   std::stringstream req_ss;
-  req_ss << get_method() << ' ' << _url.uri() << ' ' << "HTTP/1.1\r\n";
-  std::string req = req_ss.str();
-  for (const auto &[k, v] : _headers) {
+  req_ss << get_method(method) << ' ' << uri << ' ' << "HTTP/1.1\r\n";
+  for (const auto &[k, v] : headers) {
     std::stringstream header_ss;
-    header_ss << k << ": " << v << "\r\n";
-    req.append(header_ss.str());
+    req_ss << k << ": " << v << "\r\n";
   }
-  std::stringstream host_ss;
-  host_ss << "Host: " << _url.domain() << "\r\n";
-  req.append(host_ss.str());
-  if (!_body.empty()) {
-    std::stringstream content_len_ss;
-    content_len_ss << "Content-Length: " << _body.length();
-    req.append(content_len_ss.str());
-  }
-  req.append("\r\n\r\n");
-  req.append(_body);
-  return req;
+  req_ss << "\r\n";
+  req_ss << body;
+  return req_ss.str();
 }
 
 /*---------------------"Engine" Methods-----------------*/
@@ -171,19 +162,25 @@ std::string HttpClient::get_formatted_request() {
  * Read and parse the response headers sent by the server
  * and returns a pair of headers and the status code
  */
-std::pair<std::map<std::string, std::string>, int> HttpClient::get_resp_headers() {
+std::pair<HttpHeaders, int> HttpClient::parse_response_header() {
   std::string resp;
-  char buf[2] = { 0 };
+  char buf[2] = {0};
   /* Read byte-by-byte from the server socket until we reach the
    * end of the headers indicated by a "\r\n\r\n"
    */
-  while (read(_sockfd, buf, 1) > 0) {
+  while (true) {
+    int num_bytes_read = handle_read(buf, 1);
+    if (num_bytes_read < 0) {
+      throw std::runtime_error("Error reading from socket");
+    }
+    if (num_bytes_read == 0) {
+      break;
+    }
     resp.append(buf);
-    if (resp.find("\r\n\r\n") != std::string::npos) { break; }
+    if (resp.ends_with("\r\n\r\n")) {
+      break;
+    }
   }
-#ifdef ENABLE_LOGGING
-  logger->info("Recieved Response Headers:\n{}", resp);
-#endif
   std::vector<std::string> resp_headers = strutil::split(resp, "\n");
   /* Get the iterator pointing to the first line */
   auto it = resp_headers.cbegin();
@@ -200,40 +197,33 @@ std::pair<std::map<std::string, std::string>, int> HttpClient::get_resp_headers(
   for (; it != resp_headers.cend(); ++it) {
     std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
     /* Sanity checks to make sure we don't do anything with empty strings */
-    if (tmp.empty()) continue;
+    if (tmp.empty())
+      continue;
     if (!tmp[0].empty() && !tmp[1].empty())
       /* make the headers all lower-case for consistency thorughout the code
        * base */
-      ret.insert({ strutil::lowers(tmp[0]), strutil::lowers(tmp[1]) });
+      ret.insert({strutil::lowers(tmp[0]), strutil::lowers(tmp[1])});
   }
-  return { ret, statuscode };
+  return {ret, statuscode};
 }
 
-/**
- * Identical to `get_resp_headers` above, except we are using
- * `BIO_read` instead of `read`
- */
-std::pair<std::map<std::string, std::string>, int> HttpClient::ssl_get_resp_headers() {
-  std::string resp;
-  char buf[2] = { 0 };
-  while (BIO_read(_bio, buf, 1) > 0) {
-    resp.append(buf);
-    if (resp.find("\r\n\r\n") != std::string::npos) { break; }
+int HttpClient::handle_read(char *buf, std::size_t size) {
+  if (_ssl != NULL) {
+    return SSL_read(_ssl, buf, size);
   }
-#ifdef ENABLE_LOGGING
-  logger->info("Recieved Response Headers:\n{}", resp);
-#endif
-  std::vector<std::string> resp_headers = strutil::split(resp, "\n");
-  auto it = resp_headers.cbegin();
-  int statuscode = std::stoi(strutil::split(*it, " ")[1]);
-  it++;
-  std::map<std::string, std::string> ret;
-  for (; it != resp_headers.cend(); ++it) {
-    std::vector<std::string> tmp = strutil::split(strutil::trim(*it), ": ");
-    if (tmp.empty()) continue;
-    if (!tmp[0].empty() && !tmp[1].empty()) ret.insert({ strutil::lowers(tmp[0]), strutil::lowers(tmp[1]) });
+  return read(_sockfd, buf, size);
+}
+
+int HttpClient::handle_write(const char *buf, std::size_t size) {
+  if (_ssl != NULL) {
+    return SSL_write(_ssl, buf, size);
   }
-  return { ret, statuscode };
+  return write(_sockfd, buf, size);
+}
+
+void HttpClient::drain(std::size_t size) {
+  std::vector<char> buf(size);
+  handle_read(buf.data(), size);
 }
 
 /**
@@ -241,30 +231,20 @@ std::pair<std::map<std::string, std::string>, int> HttpClient::ssl_get_resp_head
  * the `Content-Length` header
  */
 std::string HttpClient::read_fixed_length_body(int length) {
-  if (length == 0) { return ""; }
   int total = 0;
-  unsigned char buf[2] = { 0 };
+  char buf[BUF_SIZE] = {0};
   std::string body;
-#ifdef ENABLE_LOGGING
-  spdlog::stopwatch sw;
-  spdlog::stopwatch curr;
-#endif
   while (total < length) {
-    total += read(_sockfd, buf, 1);
-    if (!_download_file.empty()) { _of.write((char *)buf, 1); }
-    body.append((char *)buf);
-#ifdef ENABLE_LOGGING
-    if (std::chrono::duration_cast<std::chrono::seconds>(curr.elapsed()).count() > 1) {
-      logger->info("{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r",
-        total,
-        length,
-        (((float)total / length) * 100),
-        std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed()).count());
-      curr.reset();
+    int num_bytes_read = handle_read(buf, BUF_SIZE - 1);
+    if (num_bytes_read < 0) {
+      throw std::runtime_error("Error reading from socket.");
     }
-#endif
+    if (num_bytes_read == 0) {
+      break;
+    }
+    total += num_bytes_read;
+    body.append(buf, num_bytes_read);
   }
-  std::cout << '\n';
   return body;
 }
 
@@ -275,188 +255,119 @@ std::string HttpClient::read_fixed_length_body(int length) {
  */
 std::string HttpClient::read_chunked_body() {
   std::string body;
-  char buf[2] = { 0 };
+  char buf[2] = {0};
   std::string tmp;
-  std::string::size_type n;
   int len;
-  while (read(_sockfd, buf, 1)) {
+  while (true) {
+    int num_bytes_read = handle_read(buf, 1);
+    if (num_bytes_read < 0) {
+      throw std::runtime_error("Error reading from socket.");
+    }
+    if (num_bytes_read == 0) {
+      break;
+    }
+
     /* Read into temp buffer until we hit "\r\n",
      * indicating the start of a chunk
      */
-    tmp.append(buf);
-    if ((n = tmp.find("\r\n")) != std::string::npos) {
+    tmp.append(buf, 1);
+    if (tmp.ends_with("\r\n")) {
       /*
        * If we reach this block, it means that the chunk size + "\r\n"
        * is read into the temp buffer. In order the get the chunk size as a
        * decimal number, we must remove the "\r\n" (can use strutil::trim
        * instead)
        */
-      tmp.erase(n, tmp.length());
-      len = std::stoi(tmp, 0, 16);
+      len = std::stoi(strutil::trim(tmp), 0, 16);
       /* If len is 0, that means it is the end of the response body. So we
        * return the body.
        */
-      if (len == 0) return body;
+      if (len == 0)
+        break;
       /**
        * Else we can use the `read_fixed_length_body` to read `len` number of
-       * bytes from the server. IMPT: we have to read in `len + 2` bytes so as
-       * to take into account the "\r\n" at the end of each chunk!
+       * bytes from the server.
        */
-      body.append(read_fixed_length_body(len + 2));
+      body.append(read_fixed_length_body(len));
       /* Clear the temp buffer for the next iteration */
       tmp.erase();
+
+      /*
+       * IMPT: we have to "drain" 2 bytes from the socket
+       * to take into account the "\r\n" at the end of each chunk!
+       * */
+      drain(2);
     }
   }
   return body;
 }
 
-/**
- * Identical to its non_ssl counterpart, except this used `BIO_read`
- * instead of `read`.
- */
-std::string HttpClient::ssl_read_fixed_length_body(int length) {
-  if (length == 0) { return ""; }
-  int total = 0;
-  unsigned char buf[2] = { 0 };
-  std::string body;
-#ifdef ENABLE_LOGGING
-  spdlog::stopwatch sw;
-  spdlog::stopwatch curr;
-#endif
-  while (total < length) {
-    total += BIO_read(_bio, buf, 1);
-    if (!_download_file.empty()) { _of.write((char *)buf, 1); }
-    body.append((char *)buf);
-#ifdef ENABLE_LOGGING
-    if (std::chrono::duration_cast<std::chrono::seconds>(curr.elapsed()).count() > 1) {
-      logger->info("{} out of {} bytes read, {:.2f}%, Elapsed: {}s\r",
-        total,
-        length,
-        (((float)total / length) * 100),
-        std::chrono::duration_cast<std::chrono::seconds>(sw.elapsed()).count());
-      curr.reset();
-    }
-#endif
-  }
-  std::cout << '\n';
-  return body;
-}
+HttpReponse HttpClient::send_http_request(const std::string &uri,
+                                          HttpMethod method,
+                                          HttpHeaders headers,
+                                          const std::string &body) {
 
-/**
- * Identical to its non_ssl counterpart, except this used `BIO_read`
- * instead of `read`.
- */
-std::string HttpClient::ssl_read_chunked_body() {
-  std::string body;
-  char buf[2] = { 0 };
-  std::string tmp;
-  std::string::size_type n;
-  int len;
-  while (BIO_read(_bio, buf, 1)) {
-    tmp.append(buf);
-    if ((n = tmp.find("\r\n")) != std::string::npos) {
-      tmp.erase(n, tmp.length());
-      len = std::stoi(tmp, 0, 16);
-      if (len == 0) return body;
-      body.append(ssl_read_fixed_length_body(len + 2));
-      tmp.erase();
-    }
+  std::string req = get_formatted_request(uri, method, headers, body);
+  if (handle_write(req.c_str(), req.length()) <= 0) {
+    throw std::runtime_error("Error sending request");
   }
-  return body;
-}
-
-HttpReponse HttpClient::ssl_send() {
-  ssl_setup();
-  std::string req = get_formatted_request();
-  if (BIO_write(_bio, req.c_str(), req.length()) <= 0) { throw std::runtime_error("failed to write"); }
-  auto [resp_headers, statuscode] = ssl_get_resp_headers();
-  std::string body;
-  if (resp_headers.find("content-length") != resp_headers.end()) {
-    body = ssl_read_fixed_length_body(std::stoi(resp_headers.at("content-length")));
-  } else if (resp_headers.find("transfer-encoding") != resp_headers.end()) {
-    body = ssl_read_chunked_body();
+  auto [resp_headers, statuscode] = parse_response_header();
+  std::string response_body;
+  if (resp_headers.contains("content-length")) {
+    response_body =
+        read_fixed_length_body(std::stoi(resp_headers.at("content-length")));
+  } else if (resp_headers.contains("transfer-encoding")) {
+    response_body = read_chunked_body();
   } else {
-    throw std::runtime_error(
-      "host server response header has no "
-      "content-length or chunked encoding");
+    throw std::runtime_error("server response headers have no "
+                             "content-length or transfer-encoding: chunked");
   }
   if (statuscode >= 300 && statuscode < 400) {
     std::string new_location = resp_headers.at("location");
+    // Handle case where the provided location is a relative URL
     if (new_location[0] == '/') {
       std::stringstream new_location_ss;
-      new_location_ss << _url.scheme() << "://" << _url.domain() << new_location;
+      new_location_ss << _base_url.scheme() << "://" << _base_url.domain()
+                      << new_location;
       new_location = new_location_ss.str();
     }
-    return new_client(new_location).download_to_file(_download_file).send();
+    return send_http_request(new_location, method, headers, body);
   }
-  return { resp_headers, statuscode, body };
+  return {resp_headers, statuscode, response_body};
 }
 
-HttpReponse HttpClient::non_ssl_send() {
-  /* First we have to setup the socket connection  */
-  non_ssl_setup();
-  /* We then get the fully configured and formatted request string */
-  std::string req = get_formatted_request();
-  /* We write the request to the server */
-  if (write(_sockfd, req.c_str(), req.length()) == -1) { throw std::runtime_error("failed to write (non-ssl)"); }
-  auto [resp_headers, statuscode] = get_resp_headers();
-  std::string body;
-  /* If the server responds with a "Content-Length" header, we will use the
-   * fixed-length method */
-  if (resp_headers.find("content-length") != resp_headers.end()) {
-    body = read_fixed_length_body(std::stoi(resp_headers.at("content-length")));
-    /* Else if "Transfer-Encoding" was specified instead, read from the server
-     * in chunks */
-  } else if (resp_headers.find("transfer-encoding") != resp_headers.end()) {
-    body = read_chunked_body();
-    /* Else panic as we don't know how to deal with any other methods of reading
-     * the body */
-  } else {
-    throw std::runtime_error(
-      "host server response header has no "
-      "content-length or chunked encoding");
-  }
-  /* Check for redirection status codes */
-  if (statuscode >= 300 && statuscode < 400) {
-    std::string new_location = resp_headers.at("location");
-    /* If the server redirects to a relative path, construct the full path from
-     * the relative path */
-    if (new_location[0] == '/') {
-      std::stringstream new_location_ss;
-      new_location_ss << _url.scheme() << "://" << _url.domain() << new_location;
-      new_location = new_location_ss.str();
-    }
-    /* Create a new client and send a request to the new location.
-     * This can recursively redirect until we get an valid status code
-     */
-    return new_client(new_location).download_to_file(_download_file).send();
-  }
-  return { resp_headers, statuscode, body };
+HttpReponse HttpClient::get(const std::string &uri) {
+  return send_http_request(uri, HttpMethod::GET, {}, "");
 }
 
-HttpReponse HttpClient::send() {
-#ifdef ENABLE_LOGGING
-  spdlog::set_pattern("[%D %r] %^[%l]%$ %v");
-  if (!_download_file.empty()) { logger->info("Downloading file into: {}\n", _download_file); }
-  logger->info("Sending Request String:\n{}", get_formatted_request());
-#endif
-  HttpReponse ret;
-  /* Choose between ssl and non-ssl methods depending on the scheme */
-  if (_url.scheme() == "https") {
-    ret = ssl_send();
-  } else {
-    ret = non_ssl_send();
-  }
-  if (!_download_file.empty()) {
-    _of.close();
-    std::filesystem::rename(_download_file + ".tmp", _download_file);
-  }
-  return ret;
+HttpReponse HttpClient::get(const std::string &uri,
+                            const HttpHeaders &headers) {
+  return send_http_request(uri, HttpMethod::GET, headers, "");
 }
 
-HttpClient &HttpClient::download_to_file(const std::string &file_name) {
-  _download_file = file_name;
-  if (_of.is_open()) { _of.close(); }
-  _of.open(file_name + ".tmp", std::ios::binary);
-  return *this;
+HttpReponse HttpClient::post(const std::string &uri, const std::string &body) {
+  return send_http_request(uri, HttpMethod::POST, {}, body);
+}
+
+HttpReponse HttpClient::post(const std::string &uri, const std::string &body,
+                             const HttpHeaders &headers) {
+  return send_http_request(uri, HttpMethod::POST, headers, body);
+}
+
+HttpReponse HttpClient::put(const std::string &uri, const std::string &body) {
+  return send_http_request(uri, HttpMethod::PUT, {}, body);
+}
+
+HttpReponse HttpClient::put(const std::string &uri, const std::string &body,
+                            const HttpHeaders &headers) {
+  return send_http_request(uri, HttpMethod::PUT, headers, body);
+}
+
+HttpReponse HttpClient::del(const std::string &uri) {
+  return send_http_request(uri, HttpMethod::DELETE, {}, "");
+}
+
+HttpReponse HttpClient::del(const std::string &uri,
+                            const HttpHeaders &headers) {
+  return send_http_request(uri, HttpMethod::DELETE, headers, "");
 }

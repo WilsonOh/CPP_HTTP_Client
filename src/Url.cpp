@@ -15,12 +15,12 @@ url::Url::Url(const string &url, const string &scheme, const string &domain,
     : _url(url), _scheme(scheme), _domain(domain), _port(port), _path(path),
       _parameters(parameters), _fragment(fragment) {}
 
-string url::Url::scheme() { return _scheme; }
-string url::Url::domain() { return _domain; }
-uint16_t url::Url::port() { return _port; }
-string url::Url::params() { return _parameters; }
-string url::Url::fragment() { return _fragment; }
-string url::Url::uri() {
+string url::Url::scheme() const { return _scheme; }
+string url::Url::domain() const { return _domain; }
+uint16_t url::Url::port() const { return _port; }
+string url::Url::params() const { return _parameters; }
+string url::Url::fragment() const { return _fragment; }
+string url::Url::uri() const {
   string params = !_parameters.empty() ? "?" + _parameters : _parameters;
   string frag = !_fragment.empty() ? "#" + _fragment : _fragment;
   return _path + params + frag;
