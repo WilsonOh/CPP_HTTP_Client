@@ -1,6 +1,6 @@
-# HTTP Client Written in C++
+# CPP_HTTP_Client
 
-This is a side project for me to gain a deeper understanding of how HTTP connections work and to also learn more about C++.
+This is a side project for me to gain a deeper understanding of low-level networking concepts as well as the HTTP spec.
 
 > **Note** This library only works on Linux and macOS!
 
@@ -9,21 +9,42 @@ This is a side project for me to gain a deeper understanding of how HTTP connect
 - `openssl` development library
 - `C++20`
 - `cmake` 3.23.2 (for integrating this library into your project)
+- `spdlog` for logging (can be bundled automatically by CMake)
 
 ## Features :sparkles:
 
 - GET/POST/PUT/DELETE requests for HTTP and HTTPS connections
-- Simple redirect handling (for 3XX codes)
-- Url parsing using the `url::Url` class
+- Redirect handling (for 3XX codes)
 - Configure requests with ease
-- Client-Request separation - set base configuration on the client and then
-  add onto the configuration for specific requests (more in the examples)
 
-## HELP
+## Hello World Example
+```cpp
+#include <HttpClient.hpp>
+#include <iostream>
 
-~~The https requests works for sites like [Google](https://google.com), [YouTube](https://youtube.com) or [httpbin](https://httpbin.org) but does not work for sites like [json placeholder](https://jsonplaceholder.typicode.com/) or [Pokémon api](https://pokeapi.co/).<br>
-I don't really know what the issue is as I'm not too familiar with tls programming so any help or feedback would be appreciated!~~<br>
-Thanks to some helpful people over at [StackOverflow](https://stackoverflow.com/questions/49474347/why-would-bio-do-connect-from-openssl-not-work-right-with-gdax-a-k-a-cloudfl), I managed to find and fix the problem! Apparently some servers require a Server Name Indication(SNI) in the TLS handshake so I just had to add it in with ` SSL_set_tlsext_host_name(ssl, _url.domain().c_str());` and now all https requests work 🙂 (hopefully).
+int main() {
+
+  HttpClient client{"https://jsonplaceholder.typicode.com"};
+
+  auto res = client.get("/todos/1");
+  std::cout << res.body << '\n';
+}
+
+```
+
+## Design
+Instead of making requests with a single url i.e. 
+```cpp
+client.get("https://jsonplaceholder.typicode.com/todos/1");
+```
+The `base url` is first set, and then requests are made using the `uri`.
+The `base_url` consists of the `scheme` e.g. https or http and the `host name` e.g. `jsonplaceholder.typicode.com` i.e.
+```cpp
+HttpClient client{"https://jsonplaceholder.typicode.com"};
+client.get("/todos/1");
+```
+It is designed this way so that the same TCP connection can be used for multiple requests to the same domain.
+
 
 ## Installation
 
@@ -52,197 +73,92 @@ add_executable(${PROJECT_NAME} <Your Source Files>...)
 target_link_libraries(${PROJECT_NAME} PRIVATE HttpClient)
 ```
 
-## Library Overview
+### The manual way
+You can also `git clone` this repo and simply include all the source files under `src/` during complilation
 
-### Helper Functions
+## More examples
 
-<details>
-<summary>strutil.hpp</summary>
-
-Namespaced under `strutil`
-
+### Checking the response
 ```cpp
-inline std::vector<std::string> split(std::string s, std::string delimiter);
-inline std::string lowers(const std::string &s); // returns a lowercase copy of a string
-inline std::string uppers(const std::string &s); // returns a uppercase copy of a string
-inline std::string ltrim(const std::string &s); // removes leading whitespace from a string
-inline std::string rtrim(const std::string &s); // removes trailing whitespace from a string
-inline std::string trim(const std::string &s); // removes leading and trailing whitespace from a string
-```
-
-</details>
-
-### Classes
-
-<details>
-
-<summary>HttpClient</summary>
-
-HttpClient handles all the connections details, e.g. creating a socket and sockaddr struct and connecting to the host server.<br>
-
-The HttpClient class is defined as the following:
-
-```cpp
-class HttpClient {
-  url::Url _url;
-  std::map<std::string, std::string> _headers;
-  HttpMethod _method;
-  int _sockfd;
-  BIO *_bio;
-  SSL_CTX *_ctx;
-  std::string _body;
-
-  HttpClient(const url::Url &url); // private constructor, not to be used
-  ...other methods
-}
-```
-
-#### Methods
-
-The methods are written in a way, which supports chaining
-
-```cpp
-static HttpClient new_client(const std::string &url); // Constructor method which takes in a url string,
-                                                      // parses it internally and returns a HttpClient object
-HttpClient &del();
-HttpClient &get();
-HttpClient &post();
-HttpClient &put();
-// sets the http method, defaults to GET if no methods are set
-
-HttpClient &add_headers(std::map<std::string, std::string> headers); // Adds http headers as a map
-HttpClient &add_header(std::string key, std::string value); // Add a single header as a key-value pair of strings
-HttpClient &body(std::string s); // Sets the request body
-
-// Getter methods
-std::string get_method();
-std::string get_formatted_request(); // returns the full raw http request
-url::Url get_url();
-
-
-HttpReponse send(); // Termination method;
-                   // sends the fully configured request and returns a HttpResponse struct
-```
-
-</details>
-
-<details>
-
-<summary>Url</summary>
-
-Namespaced under `url`
-
-```cpp
-Url parse(const std::string &url); // Takes in a url string and returns a Url object
-/* Getter methods */
-std::string scheme();
-std::string domain();
-uint16_t port();
-std::string params();
-std::string fragment();
-std::string uri();
-```
-
-</details>
-
-<details>
-<summary>HttpResponse</summary>
-
-The HttpResponse struct is defined as the following:
-
-```cpp
-struct HttpReponse {
-  std::map<std::string, std::string> headers;
-  int statuscode;
-  std::string body;
-};
-```
-
-</details>
-
-## Example Usage
-
-### GET Requests
-
-```cpp
-// main.cpp
-
-#include <iostream>
 #include <HttpClient.hpp>
+#include <iostream>
 
-int main(void) {
-  HttpClient client;
-  client.get("https://google.com")
-         .add_headers({{"Accept", "text/html"}, {"Foo", "Bar"}})
-         .get();
-  std::cout << client.get_formatted_req();
-  /*
-  GET / HTTP/1.1
-  Accept: text/html
-  Foo: Bar
-  Host: www.google.com
+int main() {
 
+  HttpClient client{"https://jsonplaceholder.typicode.com"};
 
-  */
-  auto res = HttpClient::new_client("https://jsonplaceholder.typicode.com/todos/1").send();
-  std::cout << res.body;
-  /*
-  {
-      "userId": 1,
-      "id": 1,
-      "title": "delectus aut autem",
-      "completed": false
-  }
-  */
+  auto res = client.get("/todos/1");
 
-  HttpResponse res = client.send();
   if (res.statuscode != 200) {
     ...
   }
-  for (const auto &[k, v] : res.headers) {
+
+  if (res.headers["Content-Type"] != "application/json") {
     ...
   }
-  std::cout << res.body;
+
+  std::cout << res.body << '\n';
 }
+
 ```
 
-### POST Requests
+### Adding headers
 
 ```cpp
-// main.cpp
-
+#include "HttpClient.hpp"
 #include <iostream>
-#include <HttpClient.hpp>
 
-int main(void) {
-  auto res = HttpClient::new_client("https://httpbin.org/post")
-                 .add_header("accept", "application/json")
-                 .add_header("content-type", "application/json")
-                 .body(R"({"foo": "bar"})")
-                 .post()
-                 .send();
-  std::cout << res.body;
-  /*
-  {
-  "args": {},
-  "data": "{\"foo\": \"bar\"}",
-  "files": {},
-  "form": {},
-  "headers": {
-    "Accept": "application/json",
-    "Content-Length": "14",
-    "Content-Type": "application/json",
-    "Host": "httpbin.org",
-    "X-Amzn-Trace-Id": "Root=1-62a06d82-73c561f957d3c3cb72ddf198"
-  },
-  "json": {
-    "foo": "bar"
-  },
-  "origin": <IP Address>,
-  "url": "https://httpbin.org/post"
-  }
-  */
+int main() {
+
+  HttpClient client{"https://jsonplaceholder.typicode.com"};
+
+  auto res = client.get("/todos/1", {{"Accept", "application/json"}});
+
+  std::cout << res.body << '\n';
 }
+
+```
+
+### Sending a request body
+
+```cpp
+#include "HttpClient.hpp"
+#include <iostream>
+
+int main() {
+
+  HttpClient client{"https://jsonplaceholder.typicode.com"};
+
+  auto res = client.post("/posts", R"({
+    title: 'foo',
+    body: 'bar',
+    userId: 1,
+  })");
+
+  std::cout << res.body << '\n';
+}
+
+```
+### Sending a request body with headers
+```cpp
+#include "HttpClient.hpp"
+#include <iostream>
+
+int main() {
+
+  HttpClient client{"https://jsonplaceholder.typicode.com"};
+
+  auto res = client.post("/posts", R"({
+    title: 'foo',
+    body: 'bar',
+    userId: 1,
+  })",
+  {{"Content-type", "application/json; charset=UTF-8"}}
+  );
+
+  std::cout << res.body << '\n';
+}
+
 ```
 
 ## TODO
