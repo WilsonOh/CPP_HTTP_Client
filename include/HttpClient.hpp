@@ -9,15 +9,16 @@
 #include <fstream>
 #include <map>
 #include <netinet/in.h> // sockaddr types, htons
+#include <openssl/ssl.h>
 #include <signal.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
 #include <sys/socket.h> // connect, AF_INET
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
-
-#include <openssl/ssl.h>
 
 struct HttpReponse {
   std::map<std::string, std::string> headers;
@@ -34,10 +35,11 @@ class HttpClient {
   SSL *_ssl = NULL;
   SSL_CTX *_ctx = NULL;
   url::Url _base_url;
+  std::shared_ptr<spdlog::logger> logger;
 
   void ssl_setup(const url::Url &url);
 
-  void non_ssl_setup();
+  int connect_to_host(url::Url &url);
 
   std::pair<HttpHeaders, int> parse_response_header();
 
@@ -70,7 +72,8 @@ class HttpClient {
   std::string get_method(HttpMethod method) const;
 
 public:
-  HttpClient(const std::string &url);
+  HttpClient(const std::string &url,
+             spdlog::level::level_enum logging_level = spdlog::level::off);
 
   ~HttpClient();
 

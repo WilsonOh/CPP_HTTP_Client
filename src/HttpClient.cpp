@@ -1,6 +1,7 @@
 #include "HttpClient.hpp"
 #include "Url.hpp"
 #include "spdlog/fmt/bundled/core.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "strutil.hpp"
 #include <arpa/inet.h>
 #include <filesystem>
@@ -37,7 +38,7 @@ std::string get_ip_from_addrinfo(struct addrinfo *ai) {
  * @return the file descriptor of the socket if there's a valid address, or -1
  * if there are no valid addresses
  */
-int connect_to_host(url::Url &url) {
+int HttpClient::connect_to_host(url::Url &url) {
   struct addrinfo hints = {0};
   struct addrinfo *res;
   int addrinfo_err;
@@ -57,12 +58,20 @@ int connect_to_host(url::Url &url) {
       continue;
     }
     std::string ip = get_ip_from_addrinfo(res);
+    logger->info("Attempting to connect to address: {} for domain {}", ip,
+                 url.domain());
     if (connect(sockfd, res->ai_addr, res->ai_addrlen) != 0) {
+      logger->info(
+          "Failed to connect to address: {}. Trying the next address...", ip);
       continue;
     }
+    logger->info("Successfully connected to address: {}", ip);
     break;
   }
   if (res == NULL) {
+    logger->error(
+        "Unable to connect to any of the addresses linked to the domain {}",
+        url.domain());
     return -1;
   }
   freeaddrinfo(res);
@@ -74,7 +83,10 @@ int connect_to_host(url::Url &url) {
 
 /*----------Constructor, Destructor and Setup Functions----------*/
 
-HttpClient::HttpClient(const std::string &url) {
+HttpClient::HttpClient(const std::string &url,
+                       spdlog::level::level_enum logging_level) {
+  logger = spdlog::stdout_color_mt("CPP_HTTP_Client-" + url);
+  logger->set_level(logging_level);
   url::Url parsed_url = url::parse(url);
   _base_url = parsed_url;
   _sockfd = connect_to_host(parsed_url);
@@ -181,6 +193,7 @@ std::pair<HttpHeaders, int> HttpClient::parse_response_header() {
       break;
     }
   }
+  logger->debug("Recieved raw headers:\n{}", resp);
   std::vector<std::string> resp_headers = strutil::split(resp, "\n");
   /* Get the iterator pointing to the first line */
   auto it = resp_headers.cbegin();
@@ -308,19 +321,30 @@ HttpReponse HttpClient::send_http_request(const std::string &uri,
                                           const std::string &body) {
 
   std::string req = get_formatted_request(uri, method, headers, body);
+  logger->info("Sending formatted request...");
+  logger->debug("{}", req);
   if (handle_write(req.c_str(), req.length()) <= 0) {
+    logger->error("Failed to write request to server");
     throw std::runtime_error("Error sending request");
   }
+  logger->info("Successfully sent request to server");
   auto [resp_headers, statuscode] = parse_response_header();
   std::string response_body;
   if (resp_headers.contains("content-length")) {
+    logger->info("Response header contains Content-Length. Reading "
+                 "fixed-length response body...");
     response_body =
         read_fixed_length_body(std::stoi(resp_headers.at("content-length")));
   } else if (resp_headers.contains("transfer-encoding")) {
+    logger->info("Response header contains Transfer-Encoding: Chunked. "
+                 "Reading chunked response body...");
     response_body = read_chunked_body();
   } else {
     throw std::runtime_error("server response headers have no "
                              "content-length or transfer-encoding: chunked");
+  }
+  if (!response_body.empty()) {
+    logger->debug("Recieved response body:\n{}", response_body);
   }
   if (statuscode >= 300 && statuscode < 400) {
     std::string new_location = resp_headers.at("location");
@@ -331,6 +355,9 @@ HttpReponse HttpClient::send_http_request(const std::string &uri,
                       << new_location;
       new_location = new_location_ss.str();
     }
+    logger->info(
+        "Server responded with a 3XX status code. Following redirection to {}",
+        new_location);
     return send_http_request(new_location, method, headers, body);
   }
   return {resp_headers, statuscode, response_body};
