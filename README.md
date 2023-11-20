@@ -16,6 +16,7 @@ This is a side project for me to gain a deeper understanding of low-level networ
 - GET/POST/PUT/DELETE requests for HTTP and HTTPS connections
 - Redirect handling (for 3XX codes)
 - Configure requests with ease
+- Configurable logging of low-level details
 
 ## Hello World Example
 ```cpp
@@ -75,6 +76,30 @@ target_link_libraries(${PROJECT_NAME} PRIVATE HttpClient)
 You can also `git clone` this repo and simply include all the source files under `src/` for complilation
 
 ## More examples
+
+### Configuring the logging level of a `HttpClient` instance
+By default, each `HttpClient` instance has its logging level set to `spdlog::level::off`, thus silencing all logs.
+```cpp
+#include <HttpClient.hpp>
+#include <iostream>
+
+int main() {
+  // Set logging level of this client to `debug`
+  HttpClient client("https://jsonplaceholder.typicode.com",
+                    spdlog::level::debug);
+  auto res = client.post("/posts", R"({
+    title: 'foo',
+    body: 'bar',
+    userId: 1,
+  })");
+  std::cout << res.body << '\n';
+}
+
+```
+The logs provide an easy way for users to debug a failed HTTP request for example.
+At the `debug` logging level, things like the IP address of the domain connected, the
+raw HTTP request being sent to the server, the raw HTTP response headers recieved from the
+server will be logged out!
 
 ### Checking the response
 ```cpp
