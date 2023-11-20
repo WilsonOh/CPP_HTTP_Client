@@ -23,9 +23,7 @@ This is a side project for me to gain a deeper understanding of low-level networ
 #include <iostream>
 
 int main() {
-
   HttpClient client{"https://jsonplaceholder.typicode.com"};
-
   auto res = client.get("/todos/1");
   std::cout << res.body << '\n';
 }
@@ -43,7 +41,7 @@ The `base_url` consists of the `scheme` e.g. https or http and the `host name` e
 HttpClient client{"https://jsonplaceholder.typicode.com"};
 client.get("/todos/1");
 ```
-It is designed this way so that the same TCP connection can be used for multiple requests to the same domain.
+It is designed this way so that each client is bound to a single TCP connection which can be re-used for multiple requests to the same domain.
 
 
 ## Installation
@@ -74,7 +72,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE HttpClient)
 ```
 
 ### The manual way
-You can also `git clone` this repo and simply include all the source files under `src/` during complilation
+You can also `git clone` this repo and simply include all the source files under `src/` for complilation
 
 ## More examples
 
@@ -84,19 +82,14 @@ You can also `git clone` this repo and simply include all the source files under
 #include <iostream>
 
 int main() {
-
   HttpClient client{"https://jsonplaceholder.typicode.com"};
-
   auto res = client.get("/todos/1");
-
   if (res.statuscode != 200) {
     ...
   }
-
   if (res.headers["Content-Type"] != "application/json") {
     ...
   }
-
   std::cout << res.body << '\n';
 }
 
@@ -109,11 +102,8 @@ int main() {
 #include <iostream>
 
 int main() {
-
   HttpClient client{"https://jsonplaceholder.typicode.com"};
-
   auto res = client.get("/todos/1", {{"Accept", "application/json"}});
-
   std::cout << res.body << '\n';
 }
 
@@ -126,15 +116,12 @@ int main() {
 #include <iostream>
 
 int main() {
-
   HttpClient client{"https://jsonplaceholder.typicode.com"};
-
   auto res = client.post("/posts", R"({
     title: 'foo',
     body: 'bar',
     userId: 1,
   })");
-
   std::cout << res.body << '\n';
 }
 
@@ -145,9 +132,7 @@ int main() {
 #include <iostream>
 
 int main() {
-
   HttpClient client{"https://jsonplaceholder.typicode.com"};
-
   auto res = client.post("/posts", R"({
     title: 'foo',
     body: 'bar',
@@ -155,14 +140,7 @@ int main() {
   })",
   {{"Content-type", "application/json; charset=UTF-8"}}
   );
-
   std::cout << res.body << '\n';
 }
 
 ```
-
-## TODO
-
-- [x] Learn how to properly set up SSL conections using openssl so that the https requests work properly
-- [x] Add support for adding a body for the request (using [this json library](https://github.com/nlohmann/json) maybe?)
-- [ ] use a json library to make sending json request bodies easier
