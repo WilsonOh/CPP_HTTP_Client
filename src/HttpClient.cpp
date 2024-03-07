@@ -1,14 +1,8 @@
 #include "HttpClient.hpp"
 #include "Url.hpp"
-#include "spdlog/fmt/bundled/core.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "strutil.hpp"
 #include <arpa/inet.h>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <ios>
-#include <iostream>
 #include <netdb.h>
 #include <sstream>
 #include <stdexcept>
@@ -149,6 +143,8 @@ std::string HttpClient::get_formatted_request(const std::string &uri,
                                               HttpMethod method,
                                               HttpHeaders &user_headers,
                                               const std::string &body) const {
+  // required for most servers due to virtual hosts - multiple websites hosted
+  // on a single server
   HttpHeaders headers = {{"Host", _base_url.domain()}};
 
   if (!body.empty()) {

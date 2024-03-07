@@ -2,23 +2,18 @@
 #define HTTPCLIENT_HPP
 
 #include "Url.hpp"
-#include "strutil.hpp"
 #include <arpa/inet.h> // inet_pton
 #include <cstring>
 #include <fcntl.h> // open
-#include <fstream>
 #include <map>
 #include <netinet/in.h> // sockaddr types, htons
 #include <openssl/ssl.h>
-#include <signal.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
-#include <stdexcept>
 #include <string>
 #include <sys/socket.h> // connect, AF_INET
 #include <sys/types.h>
 #include <unistd.h>
-#include <vector>
 
 struct HttpReponse {
   std::map<std::string, std::string> headers;
